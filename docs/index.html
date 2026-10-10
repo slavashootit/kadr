@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kadr — безкоштовний скріншотер і запис екрана для Mac</title>
+<meta name="description" content="Kadr — безкоштовна альтернатива CleanShot X для macOS: знімки області, вікна й скролінгу, запис відео та GIF, редактор, OCR, закріплення знімків. Без підписок і хмари.">
+<meta property="og:title" content="Kadr — скріншоти й запис екрана для Mac">
+<meta property="og:description" content="Безкоштовна альтернатива CleanShot X. Відкритий код, без підписок.">
+<meta name="theme-color" content="#0b0d14">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235b4cf5'/%3E%3Cpath d='M16 26V16h10M38 16h10v10M48 38v10H38M26 48H16V38' fill='none' stroke='white' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='32' r='5' fill='white'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7fb; --surface: #ffffff; --text: #14161f; --muted: #5d6477; --line: #e3e6ef;
+    --accent: #5b4cf5; --accent2: #1a9efa; --key: #eef0f7; --code: #14161f; --codetext: #e8eaf4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b0d14; --surface: #141722; --text: #eceef7; --muted: #9aa1b8; --line: #252a3a;
+      --key: #1d2133; --code: #0a0c12; --codetext: #e8eaf4;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0d14; --surface: #141722; --text: #eceef7; --muted: #9aa1b8; --line: #252a3a;
+    --key: #1d2133; --code: #0a0c12; --codetext: #e8eaf4;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { width: min(1080px, 100% - 32px); margin-inline: auto; }
+
+  nav { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text); font-size: 18px; }
+  .logo svg { width: 28px; height: 28px; }
+  nav .links { margin-left: auto; display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 640px) { nav .links a:not(.gh) { display: none; } }
+
+  .hero { padding: 76px 0 40px; text-align: center; }
+  .pill { display: inline-block; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 13px; }
+  h1 { font-size: clamp(34px, 6vw, 62px); line-height: 1.06; letter-spacing: -0.03em; margin: 20px auto 16px; max-width: 14ch; }
+  h1 em { font-style: normal; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 12px; font-weight: 600; font-size: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+  .btn:hover { text-decoration: none; border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; box-shadow: 0 8px 26px rgba(91, 76, 245, .35); }
+  .note { color: var(--muted); font-size: 14px; margin-top: 14px; }
+
+  .install { margin: 34px auto 0; max-width: 760px; text-align: left; }
+  .code { position: relative; background: var(--code); color: var(--codetext); border-radius: 12px; padding: 16px 92px 16px 18px; font: 14px/1.5 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; white-space: nowrap; }
+  .code button { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: 1px solid #343a52; background: #1d2133; color: #cfd3e6; border-radius: 8px; padding: 6px 12px; font: 13px -apple-system, system-ui, sans-serif; cursor: pointer; }
+  .code button:hover { background: #262b42; }
+  .cap { color: var(--muted); font-size: 13px; margin: 0 0 8px 2px; }
+
+  /* mock of the selection overlay */
+  .mock { margin: 54px auto 0; max-width: 860px; border-radius: 18px; border: 1px solid var(--line); background: linear-gradient(135deg, #3c3a8f, #1d6fb8); padding: 28px; box-shadow: 0 30px 80px rgba(20, 22, 60, .35); position: relative; overflow: hidden; min-height: 330px; }
+  .mock .bar { height: 10px; width: 120px; border-radius: 6px; background: rgba(255,255,255,.35); margin-bottom: 14px; }
+  .mock .line { height: 10px; border-radius: 6px; background: rgba(255,255,255,.18); margin-bottom: 10px; }
+  .sel { position: absolute; left: 14%; top: 24%; width: 46%; height: 48%; border: 2px solid #fff; background: rgba(255,255,255,.08); box-shadow: 0 0 0 100vmax rgba(0,0,0,.35); border-radius: 2px; }
+  .tag { position: absolute; left: 14%; top: calc(24% + 48% + 10px); background: rgba(0,0,0,.75); color: #fff; font: 12px ui-monospace, Menlo, monospace; padding: 4px 10px; border-radius: 99px; }
+  .thumb { position: absolute; left: 18px; bottom: 18px; width: 178px; border-radius: 10px; background: #fff; box-shadow: 0 8px 30px rgba(0,0,0,.4); padding: 8px; }
+  .thumb i { display: block; height: 70px; border-radius: 6px; background: linear-gradient(135deg, #5b4cf5, #1a9efa); margin-bottom: 8px; }
+  .thumb b { display: block; height: 22px; border-radius: 99px; background: #111; opacity: .85; }
+  .rec { position: absolute; right: 18px; bottom: 18px; display: flex; align-items: center; gap: 9px; background: rgba(15,17,26,.88); color: #fff; border-radius: 99px; padding: 9px 12px; font-size: 13px; }
+  .rec span { display: inline-block; width: 22px; height: 4px; border-radius: 4px; background: linear-gradient(90deg,#3ddc84,#3ddc84 60%,#f5c542); }
+  .rec em { font-style: normal; background: #ef4444; border-radius: 99px; padding: 4px 11px; font-weight: 600; }
+  @media (max-width: 640px) { .thumb, .rec { display: none; } }
+
+  section { padding: 64px 0 8px; }
+  h2 { font-size: clamp(26px, 4vw, 36px); letter-spacing: -0.02em; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 30px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .card .ic { font-size: 26px; margin-bottom: 10px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px 28px; }
+  .keys div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  kbd { font: 600 13px ui-monospace, "SF Mono", Menlo, monospace; background: var(--key); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 7px; padding: 3px 9px; white-space: nowrap; }
+
+  .steps { counter-reset: s; display: grid; gap: 12px; padding: 0; list-style: none; max-width: 760px; }
+  .steps li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px 16px 62px; position: relative; }
+  .steps li::before { content: counter(s); position: absolute; left: 18px; top: 15px; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-weight: 700; display: grid; place-items: center; }
+  .steps b { display: block; }
+  .steps span { color: var(--muted); font-size: 15px; }
+  code { font: 14px ui-monospace, "SF Mono", Menlo, monospace; background: var(--key); border-radius: 6px; padding: 1px 6px; }
+
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; margin-bottom: 10px; max-width: 760px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { color: var(--muted); margin: 10px 0 0; font-size: 15px; }
+
+  .cmp { width: 100%; max-width: 760px; border-collapse: collapse; font-size: 15px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .cmp th, .cmp td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .cmp th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .cmp tr:last-child td { border-bottom: 0; }
+
+  footer { margin-top: 72px; border-top: 1px solid var(--line); padding: 28px 0 44px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="logo" href="#top">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#5b4cf5"/><path d="M16 26V16h10M38 16h10v10M48 38v10H38M26 48H16V38" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="32" cy="32" r="5" fill="#fff"/></svg>
+      Kadr
+    </a>
+    <div class="links">
+      <a href="#features">Функції</a>
+      <a href="#keys">Клавіші</a>
+      <a href="#install">Встановлення</a>
+      <a href="#faq">Питання</a>
+      <a class="gh" href="https://github.com/slavashootit/kadr">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="pill">Безкоштовно · відкритий код · macOS 15+ · <span id="ver">v1.0.0</span></span>
+    <h1>Скріншоти й запис екрана <em>без підписок</em></h1>
+    <p class="lead">Kadr — це CleanShot X, який можна просто завантажити. Знімок області, вікна й скролінгу, запис відео та GIF зі звуком, редактор, OCR і закріплення знімків поверх вікон. Живе в рядку меню, нічого нікуди не вантажить.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/slavashootit/kadr/releases/latest/download/Kadr.dmg">⬇ Скачати для Mac</a>
+      <a class="btn" href="https://github.com/slavashootit/kadr">Код на GitHub</a>
+    </div>
+    <p class="note">Для Apple Silicon (M1 і новіші). На Intel — збірка з коду, див. «Встановлення».</p>
+
+    <div class="install">
+      <p class="cap">Або одним рядком у Терміналі:</p>
+      <div class="code"><span id="cmd">curl -fsSL https://raw.githubusercontent.com/slavashootit/kadr/main/install.sh | bash</span><button id="copy" type="button">Копіювати</button></div>
+    </div>
+
+    <div class="mock" aria-hidden="true">
+      <div class="bar"></div><div class="line" style="width:70%"></div><div class="line" style="width:55%"></div><div class="line" style="width:80%"></div><div class="line" style="width:40%"></div>
+      <div class="sel"></div>
+      <div class="tag">1280 × 720 · #5B4CF5</div>
+      <div class="thumb"><i></i><b></b></div>
+      <div class="rec">🎤 <span></span> 🔊 <span></span> 📷 <em>● Запис</em></div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Усе, що треба для скрінів</h2>
+    <p class="sub">Платні можливості CleanShot X, зібрані в одну легку програму.</p>
+    <div class="grid">
+      <div class="card"><div class="ic">🎯</div><h3>Область, вікно, екран</h3><p>Екран «заморожується», є лупа ×8 з координатами та HEX-кольором. Вікно знімається з тінню, навіть якщо його перекрито.</p></div>
+      <div class="card"><div class="ic">📜</div><h3>Скролінг-знімок</h3><p>Виділив область, повільно скролиш — Kadr сам зшиває довгу сторінку в одну картинку.</p></div>
+      <div class="card"><div class="ic">🎬</div><h3>Запис відео та GIF</h3><p>MP4 (H.264 або HEVC, 30/60 fps) із системним звуком і мікрофоном. Підсвітка кліків, показ натиснутих клавіш, вебкамера в кружечку.</p></div>
+      <div class="card"><div class="ic">🎚️</div><h3>Перевірка звуку до запису</h3><p>Компактна панель із живими індикаторами рівня мікрофона й системного звуку. Видно, що звук пишеться, ще до старту.</p></div>
+      <div class="card"><div class="ic">✂️</div><h3>Відеоредактор</h3><p>Обрізка на таймлайні з кадрами, швидкість 0.5–2×, прибрати звук, якість, експорт у MP4 або GIF.</p></div>
+      <div class="card"><div class="ic">🖍️</div><h3>Редактор знімків</h3><p>Стрілки, фігури, текст, нумерація кроків, пікселізація, розмиття, прожектор, обрізка. Гарний фон із градієнтом і тінню для соцмереж.</p></div>
+      <div class="card"><div class="ic">🔤</div><h3>OCR</h3><p>Виділив текст на екрані — він у буфері. Українська, англійська, польська, німецька, плюс вміст QR-кодів.</p></div>
+      <div class="card"><div class="ic">📌</div><h3>Піни поверх вікон</h3><p>Закріпи знімок як референс: скрол — масштаб, правий клік — прозорість, режим «клік крізь».</p></div>
+      <div class="card"><div class="ic">⚡</div><h3>Швидка панель</h3><p>Після знімка в куті з'являється мініатюра: копіювати, зберегти, редагувати, поділитися, перетягнути файл у Telegram чи Figma.</p></div>
+      <div class="card"><div class="ic">🖥️</div><h3>Чистий стіл</h3><p>Одним ярликом ховає іконки робочого столу для охайних скрінів і записів.</p></div>
+      <div class="card"><div class="ic">🔒</div><h3>Приватність</h3><p>Нічого не йде в інтернет: ні аналітики, ні хмари, ні акаунтів. Усе лежить у теці на твоєму Маку.</p></div>
+      <div class="card"><div class="ic">⌨️</div><h3>Свої клавіші</h3><p>Кожну дію можна призначити на будь-яку комбінацію, зокрема на ⌘⇧3 і ⌘⇧4.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="keys">
+  <div class="wrap">
+    <h2>Клавіші</h2>
+    <p class="sub">Типові комбінації. Змінюються в налаштуваннях.</p>
+    <div class="keys">
+      <div>Знімок області <kbd>⌥ ⇧ 1</kbd></div>
+      <div>Знімок вікна <kbd>⌥ ⇧ 2</kbd></div>
+      <div>Увесь екран <kbd>⌥ ⇧ 3</kbd></div>
+      <div>Попередня область <kbd>⌥ ⇧ 4</kbd></div>
+      <div>Запис відео <kbd>⌥ ⇧ 5</kbd></div>
+      <div>Запис GIF <kbd>⌥ ⇧ 6</kbd></div>
+      <div>Розпізнати текст <kbd>⌥ ⇧ 7</kbd></div>
+      <div>Скролінг-знімок <kbd>⌥ ⇧ 8</kbd></div>
+      <div>Закріпити з буфера <kbd>⌥ ⇧ P</kbd></div>
+      <div>Історія знімків <kbd>⌥ ⇧ H</kbd></div>
+      <div>У редакторі: копіювати й закрити <kbd>⌘ C</kbd></div>
+      <div>У редакторі: зберегти <kbd>⌘ S</kbd></div>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="wrap">
+    <h2>Чесно про різницю</h2>
+    <p class="sub">Kadr не копіює все. Ось що є, а чого немає.</p>
+    <table class="cmp">
+      <tr><th></th><th>Kadr</th><th>CleanShot X</th></tr>
+      <tr><td>Ціна</td><td>Безкоштовно</td><td>Платно / підписка</td></tr>
+      <tr><td>Знімки, запис, GIF, редактор, OCR, піни</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Скролінг-знімок</td><td>✓ (без «липких» шапок)</td><td>✓</td></tr>
+      <tr><td>Хмара й короткі лінки</td><td>—</td><td>✓</td></tr>
+      <tr><td>Обрізка відео</td><td>✓</td><td>✓</td></tr>
+      <tr><td>Відкритий код</td><td>✓</td><td>—</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Встановлення</h2>
+    <p class="sub">Потрібна macOS 15 (Sequoia) або новіша. Готова збірка — для Apple Silicon; на Intel збери з коду: <code>./build.sh install</code>.</p>
+    <ol class="steps">
+      <li><b>Завантаж і перетягни в «Програми»</b><span>Відкрий <code>Kadr.dmg</code> і перетягни Kadr на папку Applications.</span></li>
+      <li><b>Перший запуск</b><span>Програма не підписана Apple, тому macOS може не відкрити її. Зніми карантин одним рядком: <code>xattr -cr /Applications/Kadr.app</code>, потім відкрий Kadr. Або правий клік по програмі → «Відкрити».</span></li>
+      <li><b>Дозвіл на запис екрана</b><span>Системні параметри → Приватність і безпека → Запис екрана й аудіо системи → увімкни Kadr і перезапусти його.</span></li>
+      <li><b>Користуйся</b><span>Іконка Kadr з'явиться в рядку меню. Натисни <kbd>⌥ ⇧ 1</kbd> і виділи область.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>Питання</h2>
+    <details><summary>Чому macOS каже, що програму не можна відкрити?</summary><p>Kadr безкоштовний і не має платного сертифіката розробника Apple, тож не нотаризований. Один раз виконай <code>xattr -cr /Applications/Kadr.app</code> або відкрий через правий клік → «Відкрити».</p></details>
+    <details><summary>Після оновлення знову просить дозвіл на запис екрана</summary><p>Це буває, коли програму збирають без постійного підпису. Вимкни й увімкни Kadr у Параметрах → Приватність і безпека → Запис екрана. Якщо збираєш сам, створи власний сертифікат підпису й задай <code>KADR_SIGN_ID</code> — інструкція в README.</p></details>
+    <details><summary>Не працюють ⌘⇧3 і ⌘⇧4</summary><p>Їх займає системний скріншотер. Вимкни його: Системні параметри → Клавіатура → Скорочення → Знімки екрана. Потім признач ці клавіші в налаштуваннях Kadr.</p></details>
+    <details><summary>Де лежать знімки?</summary><p>За замовчуванням у <code>~/Pictures/Kadr</code>. Теку можна змінити в налаштуваннях.</p></details>
+    <details><summary>Як зібрати самому?</summary><p>Потрібні Command Line Tools (<code>xcode-select --install</code>). Далі <code>git clone https://github.com/slavashootit/kadr.git &amp;&amp; cd kadr &amp;&amp; ./build.sh install</code>.</p></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Kadr · MIT · зроблено, щоб не платити за підписку</span>
+    <span><a href="https://github.com/slavashootit/kadr">GitHub</a> · <a href="https://github.com/slavashootit/kadr/releases">Усі версії</a> · <a href="https://github.com/slavashootit/kadr/issues">Проблеми</a></span>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('copy').addEventListener('click', function () {
+    var btn = this;
+    var text = document.getElementById('cmd').textContent;
+    var done = function () { btn.textContent = 'Скопійовано'; setTimeout(function () { btn.textContent = 'Копіювати'; }, 1600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, done);
+    } else {
+      var r = document.createRange(); r.selectNodeContents(document.getElementById('cmd'));
+      var s = getSelection(); s.removeAllRanges(); s.addRange(r); try { document.execCommand('copy'); } catch (e) {} s.removeAllRanges(); done();
+    }
+  });
+</script>
+</body>
+</html>

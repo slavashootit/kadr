@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Command Line Tools only (like a typical user Mac)
+        if: matrix.os == 'macos-26'
+        run: sudo xcode-select -s /Library/Developer/CommandLineTools
+      - run: ./build.sh
