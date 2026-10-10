@@ -56,6 +56,8 @@ private struct GeneralTab: View {
                     .onChange(of: launchAtLogin) { LaunchAtLogin.set(launchAtLogin) }
                 Toggle("Звук затвора", isOn: $sound)
                 Picker("Панель після знімка зникає через", selection: $autoClose) {
+                    Text("3 с").tag(3)
+                    Text("5 с").tag(5)
                     Text("10 с").tag(10)
                     Text("20 с").tag(20)
                     Text("60 с").tag(60)
