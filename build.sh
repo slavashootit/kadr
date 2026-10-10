@@ -28,8 +28,11 @@ echo "Built $APP (signed with: $SIGN_ID)"
 
 if [ "${1:-}" = "install" ]; then
     pkill -x Kadr 2>/dev/null || true
+    # Wait for the old instance to exit, otherwise `open` fails with -600.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -x Kadr >/dev/null || break; sleep 0.3; done
     rm -rf /Applications/Kadr.app
     cp -R "$APP" /Applications/
-    open /Applications/Kadr.app
+    sleep 0.5
+    open /Applications/Kadr.app 2>/dev/null || { sleep 1; open /Applications/Kadr.app; }
     echo "Installed to /Applications/Kadr.app"
 fi
