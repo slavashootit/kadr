@@ -16,7 +16,7 @@ enum OCR {
             let codes = VNDetectBarcodesRequest()
             try VNImageRequestHandler(cgImage: image, options: [:]).perform([text, codes])
 
-            let observations = (text.results ?? []).compactMap { $0 as? VNRecognizedTextObservation }
+            let observations = text.results ?? []
             // Group into lines top-to-bottom, left-to-right (Vision uses bottom-left normalized coords).
             let sorted = observations.sorted {
                 let a = $0.boundingBox, b = $1.boundingBox
@@ -37,7 +37,7 @@ enum OCR {
                 lastY = y
                 lastH = o.boundingBox.height
             }
-            let payloads = (codes.results ?? []).compactMap { ($0 as? VNBarcodeObservation)?.payloadStringValue }
+            let payloads = (codes.results ?? []).compactMap { $0.payloadStringValue }
             var out = lines.joined(separator: "\n")
             if !payloads.isEmpty { out += (out.isEmpty ? "" : "\n\n") + payloads.joined(separator: "\n") }
             return out
