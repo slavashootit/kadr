@@ -247,7 +247,7 @@ private struct QuickAccessView: View {
     let size: CGSize
     let onHover: (Bool) -> Void
     let act: (QuickAccess.Action) -> Void
-    @State private var hover = false
+    @Local private var hover = false
 
     var body: some View {
         ZStack {

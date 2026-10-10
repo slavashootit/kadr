@@ -37,7 +37,7 @@ private struct GeneralTab: View {
     @AppStorage(PrefKey.saveFolder) private var folder = Prefs.defaultFolder.path
     @AppStorage(PrefKey.playSound) private var sound = true
     @AppStorage(PrefKey.overlayAutoClose) private var autoClose = 20
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @Local private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
         Form {
@@ -192,7 +192,7 @@ private struct RecordingTab: View {
 }
 
 private struct HotKeysTab: View {
-    @State private var refresh = 0
+    @Local private var refresh = 0
 
     var body: some View {
         Form {
@@ -216,9 +216,9 @@ private struct HotKeysTab: View {
 
 private struct HotKeyRow: View {
     let action: HotKeyAction
-    @State private var combo: KeyCombo?
-    @State private var recording = false
-    @State private var monitor: Any?
+    @Local private var combo: KeyCombo? = nil
+    @Local private var recording = false
+    @Local private var monitor: Any? = nil
 
     var body: some View {
         HStack {
@@ -296,7 +296,7 @@ enum HistoryWindow {
 }
 
 private struct HistoryView: View {
-    @State private var urls = History.urls
+    @Local private var urls = History.urls
 
     var body: some View {
         Group {
@@ -325,7 +325,7 @@ private struct HistoryView: View {
 private struct HistoryCell: View {
     let url: URL
     let changed: () -> Void
-    @State private var thumb: NSImage?
+    @Local private var thumb: NSImage? = nil
 
     private var isImage: Bool { ["png", "jpg", "jpeg", "gif"].contains(url.pathExtension.lowercased()) }
 

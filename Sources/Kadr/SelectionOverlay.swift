@@ -40,7 +40,7 @@ final class SelectionController {
             Capture.showPermissionAlert()
             return nil
         }
-        return await withCheckedContinuation { cont in
+        return await withCheckedContinuation { (cont: CheckedContinuation<SelectionResult?, Never>) in
             continuation = cont
             for shot in shots {
                 let w = SelectionOverlayWindow(shot: shot, controller: self)

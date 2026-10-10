@@ -23,7 +23,7 @@ final class RecordingSetup {
     }
 
     private func present(on screen: NSScreen) async -> Bool? {
-        await withCheckedContinuation { c in
+        await withCheckedContinuation { (c: CheckedContinuation<Bool?, Never>) in
             continuation = c
             let view = RecordingSetupView(
                 meter: meter,
@@ -94,7 +94,7 @@ private final class KeyPanel: NSPanel {
 
 private struct RecordingSetupView: View {
     @ObservedObject var meter: AudioMeter
-    @State var gif: Bool
+    @Local var gif: Bool
     let pixelSize: CGSize
     let onAudioChange: (Bool) -> Void
     let onCameraChange: () async -> String?
@@ -113,7 +113,7 @@ private struct RecordingSetupView: View {
     @AppStorage(PrefKey.recordCountdown) private var countdown = 3
     @AppStorage(PrefKey.recordHideDesktop) private var hideDesktop = false
     @AppStorage(PrefKey.afterRecordOpenEditor) private var openEditor = true
-    @State private var cameraError: String?
+    @Local private var cameraError: String? = nil
 
     private let mics = AudioMeter.microphones
     private let cams = CameraBubble.cameras

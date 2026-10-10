@@ -171,7 +171,7 @@ private struct EditorRootView: View {
     @ObservedObject var model: EditorModel
     let canvas: CanvasView
     let command: (EditorCommand) -> Void
-    @State private var showBackground = false
+    @Local private var showBackground = false
 
     private let widths: [(String, CGFloat)] = [("S", 2), ("M", 4), ("L", 7), ("XL", 11)]
 
