@@ -141,6 +141,8 @@ private struct RecordingTab: View {
     @AppStorage(PrefKey.recordHEVC) private var hevc = false
     @AppStorage(PrefKey.gifFPS) private var gifFPS = 15
     @AppStorage(PrefKey.gifMaxWidth) private var gifWidth = 960
+    @AppStorage(PrefKey.recordCountdown) private var countdown = 3
+    @AppStorage(PrefKey.afterRecordOpenEditor) private var openEditor = true
 
     var body: some View {
         Form {
@@ -154,6 +156,13 @@ private struct RecordingTab: View {
                 Toggle("Показувати курсор", isOn: $cursor)
                 Toggle("Підсвічувати кліки", isOn: $clicks)
                 Toggle("Показувати натиснуті клавіші", isOn: $keys)
+                Picker("Відлік перед стартом", selection: $countdown) {
+                    Text("Без відліку").tag(0)
+                    Text("3 с").tag(3)
+                    Text("5 с").tag(5)
+                    Text("10 с").tag(10)
+                }
+                Toggle("Після запису відкривати відеоредактор", isOn: $openEditor)
             }
             Section("Звук") {
                 Toggle("Системний звук", isOn: $systemAudio)
@@ -335,7 +344,11 @@ private struct HistoryCell: View {
         .onTapGesture(count: 2) { open() }
         .contextMenu {
             Button("Відкрити") { open() }
-            if url.pathExtension.lowercased() != "mp4" { Button("Редагувати") { EditorWindowController.openFile(url) } }
+            if url.pathExtension.lowercased() == "mp4" {
+                Button("Обрізати й експортувати") { VideoEditorWindowController.open(url) }
+            } else if url.pathExtension.lowercased() != "gif" {
+                Button("Редагувати") { EditorWindowController.openFile(url) }
+            }
             Button("Копіювати") { Clipboard.copy(file: url) }
             Button("Показати у Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             Divider()
@@ -348,6 +361,10 @@ private struct HistoryCell: View {
     }
 
     private func open() {
-        if ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()) { EditorWindowController.openFile(url) } else { NSWorkspace.shared.open(url) }
+        switch url.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg": EditorWindowController.openFile(url)
+        case "mp4", "mov": VideoEditorWindowController.open(url)
+        default: NSWorkspace.shared.open(url)
+        }
     }
 }

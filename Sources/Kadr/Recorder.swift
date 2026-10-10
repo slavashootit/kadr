@@ -23,6 +23,7 @@ final class Recorder: ObservableObject {
     private var clickMonitor: Any?
     private var keyMonitor: Any?
     private var cancelled = false
+    private var hidDesktop = false
     var onStateChange: (() -> Void)?
 
     func toggle(gif: Bool) {
@@ -40,20 +41,29 @@ final class Recorder: ObservableObject {
         rect.size.height -= rect.height.truncatingRemainder(dividingBy: 2)
         guard rect.width >= 16, rect.height >= 16 else { return }
 
-        if Prefs.recordMic, !gif {
-            let ok = await AVCaptureDevice.requestAccess(for: .audio)
-            if !ok { HUD.error("Немає доступу до мікрофона — пишу без нього") }
-        }
-
-        asGIF = gif
         cancelled = false
-        showChrome(rect: rect, on: screen)
-        await Countdown.run(seconds: 3, on: screen)
+        showBorder(rect: rect, on: screen)
+        guard let chosenGIF = await RecordingSetup.run(gif: gif, areaRect: screen.globalRect(fromTopLeft: rect), screen: screen) else {
+            tearDownChrome()
+            return
+        }
+        asGIF = chosenGIF
+        if Prefs.recordMic, !asGIF, AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+            HUD.error("Немає доступу до мікрофона — пишу без нього")
+        }
+        if Prefs.recordHideDesktop, !DesktopIcons.shared.isHidden {
+            DesktopIcons.shared.hide()
+            hidDesktop = true
+        }
+        showControlPanel(rect: rect, on: screen)
+        await Countdown.run(seconds: Prefs.recordCountdown, on: screen)
+        let gif = asGIF
 
         do {
             try await begin(rect: rect, screen: screen, gif: gif)
         } catch {
             tearDownChrome()
+            restoreScene()
             HUD.error("Запис не стартував: \(error.localizedDescription)")
         }
     }
@@ -78,9 +88,14 @@ final class Recorder: ObservableObject {
             cfg.capturesAudio = Prefs.recordSystemAudio
             cfg.excludesCurrentProcessAudio = true
             cfg.captureMicrophone = Prefs.recordMic && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            if cfg.captureMicrophone, let mic = AudioMeter.microphone(id: Prefs.recordMicID) {
+                cfg.microphoneCaptureDeviceID = mic.uniqueID
+            }
         }
 
-        let url = Storage.newURL(prefix: "Kadr Recording", ext: "mp4", in: gif ? Storage.tempDir : nil)
+        // With the editor on, keep the MP4 even in GIF mode: the GIF is made on export.
+        let keepVideo = !gif || Prefs.afterRecordOpenEditor
+        let url = Storage.newURL(prefix: "Kadr Recording", ext: "mp4", in: keepVideo ? nil : Storage.tempDir)
         let recCfg = SCRecordingOutputConfiguration()
         recCfg.outputURL = url
         recCfg.outputFileType = .mp4
@@ -134,6 +149,7 @@ final class Recorder: ObservableObject {
         ticker = nil
         stopInputOverlays()
         tearDownChrome()
+        restoreScene()
         onStateChange?()
 
         try? await stream.stopCapture()
@@ -151,7 +167,10 @@ final class Recorder: ObservableObject {
         }
         guard FileManager.default.fileExists(atPath: url.path) else { HUD.error("Файл запису не створився"); return }
 
-        if asGIF {
+        if Prefs.afterRecordOpenEditor {
+            History.add(url)
+            VideoEditorWindowController.open(url, gif: asGIF)
+        } else if asGIF {
             HUD.show("Конвертую в GIF…", symbol: "hourglass", seconds: 60)
             do {
                 let tmp = try await GIFExporter.export(video: url)
@@ -174,6 +193,12 @@ final class Recorder: ObservableObject {
         if Prefs.afterOverlay { QuickAccess.shared.show(CaptureItem(video: url)) } else { HUD.show("Запис збережено", detail: url.lastPathComponent) }
     }
 
+    /// Undo what the recording session changed on screen (camera bubble, hidden icons).
+    private func restoreScene() {
+        CameraBubble.shared.hide()
+        if hidDesktop { DesktopIcons.shared.show(); hidDesktop = false }
+    }
+
     var elapsedString: String {
         let s = Int(elapsed)
         return String(format: "%d:%02d", s / 60, s % 60)
@@ -181,7 +206,7 @@ final class Recorder: ObservableObject {
 
     // MARK: Chrome (border + control panel), excluded from the capture
 
-    private func showChrome(rect: CGRect, on screen: NSScreen) {
+    private func showBorder(rect: CGRect, on screen: NSScreen) {
         let g = screen.globalRect(fromTopLeft: rect)
         let border = NSWindow(contentRect: g.insetBy(dx: -3, dy: -3), styleMask: .borderless, backing: .buffered, defer: false)
         border.identifier = Exclusion.identifier
@@ -203,7 +228,10 @@ final class Recorder: ObservableObject {
         bv.layer?.addSublayer(dash)
         border.contentView = bv
         if rect.size != screen.frame.size { border.orderFrontRegardless(); chrome.append(border) }
+    }
 
+    private func showControlPanel(rect: CGRect, on screen: NSScreen) {
+        let g = screen.globalRect(fromTopLeft: rect)
         let size = CGSize(width: 214, height: 40)
         var origin = CGPoint(x: g.midX - size.width / 2, y: g.minY - size.height - 12)
         if origin.y < screen.visibleFrame.minY + 4 { origin.y = min(g.maxY + 12, screen.visibleFrame.maxY - size.height - 4) }

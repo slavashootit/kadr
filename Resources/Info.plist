@@ -26,6 +26,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Kadr записує звук із мікрофона під час запису екрана, якщо ви це ввімкнули.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Kadr показує вебкамеру в кружечку під час запису екрана, якщо ви це ввімкнули.</string>
     <key>NSScreenCaptureUsageDescription</key>
     <string>Kadr робить знімки й записи екрана.</string>
 </dict>

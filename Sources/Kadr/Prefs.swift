@@ -20,6 +20,12 @@ enum PrefKey {
     static let recordSystemAudio = "recordSystemAudio"
     static let recordMic = "recordMic"
     static let recordHEVC = "recordHEVC"
+    static let recordMicID = "recordMicID"
+    static let recordCamera = "recordCamera"
+    static let recordCameraID = "recordCameraID"
+    static let recordCountdown = "recordCountdown"
+    static let recordHideDesktop = "recordHideDesktop"
+    static let afterRecordOpenEditor = "afterRecordOpenEditor"
     static let gifFPS = "gifFPS"
     static let gifMaxWidth = "gifMaxWidth"
     static let lastArea = "lastArea"
@@ -49,6 +55,12 @@ enum Prefs {
             PrefKey.recordSystemAudio: true,
             PrefKey.recordMic: false,
             PrefKey.recordHEVC: false,
+            PrefKey.recordMicID: "",
+            PrefKey.recordCamera: false,
+            PrefKey.recordCameraID: "",
+            PrefKey.recordCountdown: 3,
+            PrefKey.recordHideDesktop: false,
+            PrefKey.afterRecordOpenEditor: true,
             PrefKey.gifFPS: 15,
             PrefKey.gifMaxWidth: 960,
         ])
@@ -79,6 +91,12 @@ enum Prefs {
     static var recordSystemAudio: Bool { d.bool(forKey: PrefKey.recordSystemAudio) }
     static var recordMic: Bool { d.bool(forKey: PrefKey.recordMic) }
     static var recordHEVC: Bool { d.bool(forKey: PrefKey.recordHEVC) }
+    static var recordMicID: String { d.string(forKey: PrefKey.recordMicID) ?? "" }
+    static var recordCamera: Bool { d.bool(forKey: PrefKey.recordCamera) }
+    static var recordCameraID: String { d.string(forKey: PrefKey.recordCameraID) ?? "" }
+    static var recordCountdown: Int { max(0, d.integer(forKey: PrefKey.recordCountdown)) }
+    static var recordHideDesktop: Bool { d.bool(forKey: PrefKey.recordHideDesktop) }
+    static var afterRecordOpenEditor: Bool { d.bool(forKey: PrefKey.afterRecordOpenEditor) }
     static var gifFPS: Int { max(5, d.integer(forKey: PrefKey.gifFPS)) }
     static var gifMaxWidth: Int { max(240, d.integer(forKey: PrefKey.gifMaxWidth)) }
 

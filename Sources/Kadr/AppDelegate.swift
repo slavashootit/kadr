@@ -178,7 +178,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openRecent(_ sender: NSMenuItem) {
         guard let u = sender.representedObject as? URL else { return }
-        if ["png", "jpg", "jpeg"].contains(u.pathExtension.lowercased()) { EditorWindowController.openFile(u) } else { NSWorkspace.shared.open(u) }
+        switch u.pathExtension.lowercased() {
+        case "png", "jpg", "jpeg": EditorWindowController.openFile(u)
+        case "mp4", "mov": VideoEditorWindowController.open(u)
+        default: NSWorkspace.shared.open(u)
+        }
     }
 
     // MARK: Main menu: needed for ⌘Z/⌘C/⌘V in editor windows and text fields

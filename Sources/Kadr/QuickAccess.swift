@@ -150,7 +150,7 @@ final class QuickAccess {
 
     func closeAll() { panels.map(\.item).forEach(close) }
 
-    enum Action { case copy, save, annotate, pin, reveal, open, delete, gif, close, upload }
+    enum Action { case copy, save, annotate, editVideo, pin, reveal, open, delete, gif, close, upload }
 
     private func perform(_ action: Action, _ item: CaptureItem) {
         switch action {
@@ -168,6 +168,10 @@ final class QuickAccess {
         case .annotate:
             guard item.kind == .image else { return }
             EditorWindowController.open(item)
+            close(item)
+        case .editVideo:
+            guard let u = item.fileURL else { return }
+            VideoEditorWindowController.open(u)
             close(item)
         case .pin:
             if let img = item.image { PinWindow.pin(img, scale: item.scale, at: item.screenRect) }
@@ -274,6 +278,7 @@ private struct QuickAccessView: View {
                         if item.kind == .image {
                             corner("pencil.tip.crop.circle", "Редагувати") { act(.annotate) }
                         } else if item.fileURL?.pathExtension.lowercased() != "gif" {
+                            corner("scissors", "Обрізати й експортувати") { act(.editVideo) }
                             corner("photo.stack", "Конвертувати в GIF") { act(.gif) }
                         }
                         Spacer()
@@ -291,7 +296,9 @@ private struct QuickAccessView: View {
             withAnimation(.easeOut(duration: 0.12)) { hover = h }
             onHover(h)
         }
-        .onTapGesture(count: 2) { act(item.kind == .image ? .annotate : .open) }
+        .onTapGesture(count: 2) {
+            if item.kind == .image { act(.annotate) } else { act(item.fileURL?.pathExtension.lowercased() == "gif" ? .open : .editVideo) }
+        }
         .onDrag {
             if let url = item.kind == .image ? item.ensureFile() : item.fileURL, let p = NSItemProvider(contentsOf: url) {
                 return p
