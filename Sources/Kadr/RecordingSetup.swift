@@ -36,9 +36,13 @@ final class RecordingSetup {
             let host = NSHostingView(rootView: view)
             let size = host.fittingSize
             let vis = screen.visibleFrame
-            var origin = CGPoint(x: areaRect.midX - size.width / 2, y: areaRect.midY - size.height / 2)
+            // Sit outside the capture area: below it, else above, else inside along the bottom edge.
+            var origin = CGPoint(x: areaRect.midX - size.width / 2, y: areaRect.minY - size.height - 12)
+            if origin.y < vis.minY + 6 {
+                origin.y = areaRect.maxY + 12
+                if origin.y + size.height > vis.maxY - 6 { origin.y = max(vis.minY, areaRect.minY) + 24 }
+            }
             origin.x = min(max(origin.x, vis.minX + 8), vis.maxX - size.width - 8)
-            origin.y = min(max(origin.y, vis.minY + 8), vis.maxY - size.height - 8)
 
             let p = KeyPanel(contentRect: CGRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             p.identifier = Exclusion.identifier
@@ -115,111 +119,107 @@ private struct RecordingSetupView: View {
     private let cams = CameraBubble.cameras
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: "record.circle").foregroundStyle(.red)
-                Text("Запис екрана").font(.headline)
-                Text("\(Int(pixelSize.width)) × \(Int(pixelSize.height))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                Spacer()
-                Picker("", selection: $gif) {
-                    Text("Відео").tag(false)
-                    Text("GIF").tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 130)
+        HStack(spacing: 6) {
+            Picker("", selection: $gif) {
+                Text("Відео").tag(false)
+                Text("GIF").tag(true)
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 104)
 
-            group("Звук") {
-                if gif {
-                    Text("GIF пишеться без звуку").font(.callout).foregroundStyle(.secondary)
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Toggle("Мікрофон", isOn: $mic).frame(width: 130, alignment: .leading)
-                            Picker("", selection: $micID) {
-                                Text("Типовий").tag("")
-                                ForEach(mics, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
-                            }
-                            .labelsHidden()
-                            .disabled(!mic)
-                        }
-                        if mic { LevelBar(level: meter.mic) }
-                        if mic, let e = meter.micError { Text(e).font(.caption).foregroundStyle(.orange) }
-                        Toggle("Системний звук", isOn: $systemAudio)
-                        if systemAudio { LevelBar(level: meter.system) }
-                        if systemAudio, let e = meter.systemError { Text(e).font(.caption).foregroundStyle(.orange) }
-                        if mic || systemAudio {
-                            Text("Скажи щось або ввімкни звук — смужка має рухатись.").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+            divider
+
+            // Microphone: tap toggles, menu picks the device.
+            chip(on: mic && !gif, symbol: mic && !gif ? "mic.fill" : "mic.slash", level: meter.mic,
+                 warn: mic ? meter.micError : nil, disabled: gif) {
+                Toggle("Мікрофон", isOn: $mic)
+                Divider()
+                Picker("Пристрій", selection: $micID) {
+                    Text("Типовий").tag("")
+                    ForEach(mics, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
                 }
+                .pickerStyle(.inline)
             }
+            .help(gif ? "GIF без звуку" : "Мікрофон — смужка показує рівень")
 
-            group("Камера") {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Toggle("Вебкамера", isOn: $camera).frame(width: 130, alignment: .leading)
-                        Picker("", selection: $cameraID) {
-                            Text("Типова").tag("")
-                            ForEach(cams, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
-                        }
-                        .labelsHidden()
-                        .disabled(!camera)
-                    }
-                    if camera { Text("Кружечок можна перетягнути, скрол — розмір.").font(.caption).foregroundStyle(.secondary) }
-                    if let cameraError { Text(cameraError).font(.caption).foregroundStyle(.orange) }
-                }
+            chip(on: systemAudio && !gif, symbol: systemAudio && !gif ? "speaker.wave.2.fill" : "speaker.slash", level: meter.system,
+                 warn: systemAudio ? meter.systemError : nil, disabled: gif) {
+                Toggle("Системний звук", isOn: $systemAudio)
             }
+            .help("Системний звук — смужка показує рівень")
 
-            group("У кадрі") {
-                HStack(spacing: 14) {
-                    Toggle("Курсор", isOn: $cursor)
-                    Toggle("Кліки", isOn: $clicks)
-                    Toggle("Клавіші", isOn: $keys)
-                    Toggle("Сховати іконки", isOn: $hideDesktop)
+            chip(on: camera, symbol: camera ? "video.fill" : "video.slash", level: nil, warn: cameraError, disabled: false) {
+                Toggle("Вебкамера", isOn: $camera)
+                Divider()
+                Picker("Камера", selection: $cameraID) {
+                    Text("Типова").tag("")
+                    ForEach(cams, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) }
                 }
-                .toggleStyle(.checkbox)
+                .pickerStyle(.inline)
             }
+            .help("Вебкамера: кружечок можна перетягнути, скрол — розмір")
 
-            HStack(spacing: 16) {
-                LabeledContent("Відлік") {
-                    Picker("", selection: $countdown) {
-                        Text("Ні").tag(0)
-                        Text("3 с").tag(3)
-                        Text("5 с").tag(5)
-                        Text("10 с").tag(10)
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 170)
+            Menu {
+                Toggle("Показувати курсор", isOn: $cursor)
+                Toggle("Підсвічувати кліки", isOn: $clicks)
+                Toggle("Показувати клавіші", isOn: $keys)
+                Toggle("Сховати іконки робочого столу", isOn: $hideDesktop)
+                Divider()
+                Picker("Відлік", selection: $countdown) {
+                    Text("Без відліку").tag(0)
+                    Text("3 с").tag(3)
+                    Text("5 с").tag(5)
+                    Text("10 с").tag(10)
                 }
-                LabeledContent("FPS") {
-                    Picker("", selection: $fps) {
-                        Text("30").tag(30)
-                        Text("60").tag(60)
-                    }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 80)
+                Picker("Кадрів на секунду", selection: $fps) {
+                    Text("30 fps").tag(30)
+                    Text("60 fps").tag(60)
                 }
+                Divider()
+                Toggle("Після запису — відеоредактор", isOn: $openEditor)
+            } label: {
+                Image(systemName: "gearshape.fill").frame(width: 26, height: 26)
             }
-            .font(.callout)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Курсор, кліки, клавіші, відлік, fps")
 
-            Toggle("Після запису відкрити відеоредактор", isOn: $openEditor).toggleStyle(.checkbox)
+            Text("\(Int(pixelSize.width))×\(Int(pixelSize.height))")
+                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
 
-            HStack {
-                Button("Скасувати") { onCancel() }.keyboardShortcut(.cancelAction)
-                Spacer()
-                Button { onStart(gif) } label: {
-                    Label("Почати запис", systemImage: "record.circle.fill").frame(minWidth: 140)
-                }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .controlSize(.large)
+            divider
+
+            Button { onCancel() } label: {
+                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).frame(width: 24, height: 24)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .keyboardShortcut(.cancelAction)
+            .help("Скасувати (Esc)")
+
+            Button { onStart(gif) } label: {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.white).frame(width: 8, height: 8)
+                    Text(countdown > 0 ? "Запис · \(countdown)с" : "Запис").font(.system(size: 12, weight: .semibold))
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 28)
+                .background(Capsule().fill(Color.red))
+                .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+            .help("Почати (⏎)")
         }
-        .padding(18)
-        .frame(width: 440)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThickMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.12)))
+        .padding(.horizontal, 10)
+        .frame(height: 44)
+        .background(Capsule().fill(.ultraThickMaterial))
+        .overlay(Capsule().stroke(Color.white.opacity(0.12)))
+        .fixedSize()
         .onChange(of: gif) { onAudioChange(gif) }
         .onChange(of: mic) { onAudioChange(gif) }
         .onChange(of: micID) { onAudioChange(gif) }
@@ -228,11 +228,33 @@ private struct RecordingSetupView: View {
         .onChange(of: cameraID) { Task { cameraError = await onCameraChange() } }
     }
 
-    private func group<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            content()
+    private var divider: some View {
+        Rectangle().fill(Color.white.opacity(0.15)).frame(width: 1, height: 22)
+    }
+
+    /// Icon button with a dropdown menu and an optional mini level meter underneath.
+    private func chip<M: View>(on: Bool, symbol: String, level: Float?, warn: String?, disabled: Bool,
+                               @ViewBuilder menu: () -> M) -> some View {
+        VStack(spacing: 2) {
+            Menu {
+                menu()
+                if let warn { Divider(); Text(warn) }
+            } label: {
+                Image(systemName: warn != nil ? "exclamationmark.triangle.fill" : symbol)
+                    .foregroundStyle(warn != nil ? Color.orange : (on ? Color.primary : Color.secondary))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            if let level, on {
+                LevelBar(level: level).frame(width: 22, height: 3)
+            } else {
+                Color.clear.frame(width: 22, height: 3)
+            }
         }
+        .frame(width: 36, height: 32)
+        .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.white.opacity(0.12) : Color.clear))
+        .disabled(disabled)
     }
 }
 
@@ -252,6 +274,6 @@ struct LevelBar: View {
                     .animation(.linear(duration: 0.08), value: level)
             }
         }
-        .frame(height: 8)
+        .frame(minHeight: 3, maxHeight: 8)
     }
 }

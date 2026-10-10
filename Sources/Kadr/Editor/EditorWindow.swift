@@ -57,9 +57,13 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         canvas.commitText()
         switch cmd {
         case .copy:
+            // Copy finishes the edit: keep the saved file in sync, then close.
             guard let img = model.render() else { return }
             Clipboard.copy(img, scale: model.scale)
+            if model.dirty, Prefs.afterSave { save(quiet: true) }
+            model.dirty = false
             HUD.show("Скопійовано")
+            window?.close()
         case .save:
             _ = save()
         case .saveAs:
@@ -256,7 +260,7 @@ private struct EditorRootView: View {
                 .menuIndicator(.hidden)
                 .frame(width: 30)
 
-            Button("Копіювати") { command(.copy) }.keyboardShortcut("c", modifiers: [.command, .shift])
+            Button("Копіювати") { command(.copy) }.help("⌘C — скопіювати й закрити")
             Button("Зберегти") { command(.save) }.keyboardShortcut("s", modifiers: .command)
             Button("Готово") { command(.done) }
                 .keyboardShortcut(.return, modifiers: .command)
