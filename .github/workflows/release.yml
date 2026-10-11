@@ -1,5 +1,8 @@
 name: Release
 
+# Publishes a release for the version in the VERSION file.
+# Trigger: push a tag vX.Y.Z, or run this workflow manually (it creates the tag itself).
+
 on:
   push:
     tags: ["v*"]
@@ -13,25 +16,22 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Check tag matches VERSION
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Resolve version
+        id: v
         run: |
-          [ "${GITHUB_REF_NAME#v}" = "$(tr -d '[:space:]' < VERSION)" ] || { echo "Tag ${GITHUB_REF_NAME} != VERSION file"; exit 1; }
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME#v}" != "$VERSION" ]; then
+            echo "Tag ${GITHUB_REF_NAME} != VERSION file ($VERSION)"; exit 1
+          fi
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
       - name: Build and pack
         run: ./build.sh dmg
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             build/Kadr.dmg
             build/Kadr.zip
           generate_release_notes: true
-      - name: Keep artifacts for manual runs
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kadr
-          path: |
-            build/Kadr.dmg
-            build/Kadr.zip
