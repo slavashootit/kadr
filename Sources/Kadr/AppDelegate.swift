@@ -49,8 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
         if Recorder.shared.isRecording {
-            button.image = NSImage(systemSymbolName: "stop.circle.fill", accessibilityDescription: "Стоп")?
-                .withSymbolConfiguration(.init(paletteColors: [.systemRed]))
+            let paused = Recorder.shared.isPaused
+            button.image = NSImage(systemSymbolName: paused ? "pause.circle.fill" : "stop.circle.fill", accessibilityDescription: "Стоп")?
+                .withSymbolConfiguration(.init(paletteColors: [paused ? .systemOrange : .systemRed]))
             button.title = " " + Recorder.shared.elapsedString
             statusItem.menu = nil
             button.target = self

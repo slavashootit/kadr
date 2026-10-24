@@ -144,7 +144,7 @@ private struct RecordingTab: View {
     @AppStorage(PrefKey.gifFPS) private var gifFPS = 15
     @AppStorage(PrefKey.gifMaxWidth) private var gifWidth = 960
     @AppStorage(PrefKey.recordCountdown) private var countdown = 3
-    @AppStorage(PrefKey.afterRecordOpenEditor) private var openEditor = true
+    @AppStorage(PrefKey.afterRecord) private var afterRecord = "folder"
 
     var body: some View {
         Form {
@@ -164,7 +164,11 @@ private struct RecordingTab: View {
                     Text("5 с").tag(5)
                     Text("10 с").tag(10)
                 }
-                Toggle("Після запису відкривати відеоредактор", isOn: $openEditor)
+                Picker("Після запису", selection: $afterRecord) {
+                    Text("Відкрити теку з записом").tag("folder")
+                    Text("Панель швидкого доступу").tag("panel")
+                    Text("Відеоредактор").tag("editor")
+                }
             }
             Section("Звук") {
                 Toggle("Системний звук", isOn: $systemAudio)

@@ -10,6 +10,9 @@ final class CameraBubble {
     private var session: AVCaptureSession?
     private(set) var deviceID: String?
     var isVisible: Bool { panel != nil }
+    /// While the recording frame is being set up, the bubble sits above its dimmed overlay to stay draggable.
+    var raised = false { didSet { panel?.level = level } }
+    private var level: NSWindow.Level { raised ? .screenSaver : .floating }
 
     static var cameras: [AVCaptureDevice] {
         AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera],
@@ -43,7 +46,7 @@ final class CameraBubble {
 
         let p = BubblePanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.isReleasedWhenClosed = false
-        p.level = .floating
+        p.level = level
         p.backgroundColor = .clear
         p.isOpaque = false
         p.hasShadow = true

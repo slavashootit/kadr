@@ -25,7 +25,7 @@ enum PrefKey {
     static let recordCameraID = "recordCameraID"
     static let recordCountdown = "recordCountdown"
     static let recordHideDesktop = "recordHideDesktop"
-    static let afterRecordOpenEditor = "afterRecordOpenEditor"
+    static let afterRecord = "afterRecord"            // "folder" | "panel" | "editor"
     static let gifFPS = "gifFPS"
     static let gifMaxWidth = "gifMaxWidth"
     static let lastArea = "lastArea"
@@ -60,7 +60,7 @@ enum Prefs {
             PrefKey.recordCameraID: "",
             PrefKey.recordCountdown: 3,
             PrefKey.recordHideDesktop: false,
-            PrefKey.afterRecordOpenEditor: true,
+            PrefKey.afterRecord: "folder",
             PrefKey.gifFPS: 15,
             PrefKey.gifMaxWidth: 960,
         ])
@@ -96,7 +96,8 @@ enum Prefs {
     static var recordCameraID: String { d.string(forKey: PrefKey.recordCameraID) ?? "" }
     static var recordCountdown: Int { max(0, d.integer(forKey: PrefKey.recordCountdown)) }
     static var recordHideDesktop: Bool { d.bool(forKey: PrefKey.recordHideDesktop) }
-    static var afterRecordOpenEditor: Bool { d.bool(forKey: PrefKey.afterRecordOpenEditor) }
+    static var afterRecord: String { d.string(forKey: PrefKey.afterRecord) ?? "folder" }
+    static var afterRecordOpenEditor: Bool { afterRecord == "editor" }
     static var gifFPS: Int { max(5, d.integer(forKey: PrefKey.gifFPS)) }
     static var gifMaxWidth: Int { max(240, d.integer(forKey: PrefKey.gifMaxWidth)) }
 

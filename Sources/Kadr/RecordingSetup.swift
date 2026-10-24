@@ -8,18 +8,21 @@ final class RecordingSetup {
     private var panel: NSPanel?
     private let meter = AudioMeter()
     private var continuation: CheckedContinuation<Bool?, Never>?
-    private let areaRect: CGRect   // global AppKit coords
+    private let area: RecordingArea
     private var gif: Bool
 
-    private init(gif: Bool, areaRect: CGRect) {
+    /// The area as it was when the panel opened, in global AppKit coords (places the panel and the camera).
+    private var areaRect: CGRect { area.screen.globalRect(fromTopLeft: area.rect) }
+
+    private init(gif: Bool, area: RecordingArea) {
         self.gif = gif
-        self.areaRect = areaRect
+        self.area = area
     }
 
-    /// Returns the chosen mode (true = GIF) or nil if cancelled.
-    static func run(gif: Bool, areaRect: CGRect, screen: NSScreen) async -> Bool? {
-        let s = RecordingSetup(gif: gif, areaRect: areaRect)
-        return await s.present(on: screen)
+    /// Returns the chosen mode (true = GIF) or nil if cancelled. The area stays editable while the panel is open.
+    static func run(gif: Bool, area: RecordingArea) async -> Bool? {
+        let s = RecordingSetup(gif: gif, area: area)
+        return await s.present(on: area.screen)
     }
 
     private func present(on screen: NSScreen) async -> Bool? {
@@ -28,13 +31,14 @@ final class RecordingSetup {
             let view = RecordingSetupView(
                 meter: meter,
                 gif: gif,
-                pixelSize: CGSize(width: areaRect.width * screen.backingScaleFactor, height: areaRect.height * screen.backingScaleFactor),
+                area: area,
                 onAudioChange: { [weak self] gif in self?.gif = gif; self?.refreshAudio() },
                 onCameraChange: { [weak self] in await self?.refreshCamera() },
                 onStart: { [weak self] gif in self?.finish(gif) },
                 onCancel: { [weak self] in self?.finish(nil) })
             let host = NSHostingView(rootView: view)
             let size = host.fittingSize
+            let areaRect = self.areaRect
             let vis = screen.visibleFrame
             // Sit outside the capture area: below it, else above, else inside along the bottom edge.
             var origin = CGPoint(x: areaRect.midX - size.width / 2, y: areaRect.minY - size.height - 12)
@@ -95,7 +99,7 @@ private final class KeyPanel: NSPanel {
 private struct RecordingSetupView: View {
     @ObservedObject var meter: AudioMeter
     @Local var gif: Bool
-    let pixelSize: CGSize
+    @ObservedObject var area: RecordingArea
     let onAudioChange: (Bool) -> Void
     let onCameraChange: () async -> String?
     let onStart: (Bool) -> Void
@@ -112,7 +116,7 @@ private struct RecordingSetupView: View {
     @AppStorage(PrefKey.recordFPS) private var fps = 60
     @AppStorage(PrefKey.recordCountdown) private var countdown = 3
     @AppStorage(PrefKey.recordHideDesktop) private var hideDesktop = false
-    @AppStorage(PrefKey.afterRecordOpenEditor) private var openEditor = true
+    @AppStorage(PrefKey.afterRecord) private var afterRecord = "folder"
     @Local private var cameraError: String? = nil
 
     private let mics = AudioMeter.microphones
@@ -177,7 +181,11 @@ private struct RecordingSetupView: View {
                     Text("60 fps").tag(60)
                 }
                 Divider()
-                Toggle("Після запису — відеоредактор", isOn: $openEditor)
+                Picker("Після запису", selection: $afterRecord) {
+                    Text("Відкрити теку з записом").tag("folder")
+                    Text("Панель швидкого доступу").tag("panel")
+                    Text("Відеоредактор").tag("editor")
+                }
             } label: {
                 Image(systemName: "gearshape.fill").frame(width: 26, height: 26)
             }
@@ -186,7 +194,7 @@ private struct RecordingSetupView: View {
             .fixedSize()
             .help("Курсор, кліки, клавіші, відлік, fps")
 
-            Text("\(Int(pixelSize.width))×\(Int(pixelSize.height))")
+            Text("\(Int(area.pixelSize.width))×\(Int(area.pixelSize.height))")
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
