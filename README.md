@@ -75,4 +75,4 @@ KADR_SIGN_ID="Kadr Dev" ./build.sh install
 
 ## Версії
 
-Поточна версія лежить у файлі `VERSION` (зараз 1.1.0). Випуск нової: змінити `VERSION`, зробити тег `vX.Y.Z` (`git tag v1.0.1 && git push --tags`), і GitHub сам збере та опублікує `Kadr.dmg` і `Kadr.zip`. Сторінка (`docs/`) викладається через GitHub Pages автоматично.
+Поточна версія лежить у файлі `VERSION` (зараз 1.2.0). Випуск нової: змінити `VERSION`, зробити тег `vX.Y.Z` (`git tag v1.0.1 && git push --tags`), і GitHub сам збере та опублікує `Kadr.dmg` і `Kadr.zip`. Сторінка (`docs/`) викладається через GitHub Pages автоматично.
