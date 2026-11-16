@@ -119,7 +119,7 @@ enum Capture {
         a.informativeText = "Відкрий Системні параметри → Приватність і безпека → Запис екрана й аудіо системи, увімкни Kadr і перезапусти додаток."
         a.addButton(withTitle: "Відкрити параметри")
         a.addButton(withTitle: "Пізніше")
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         if a.runModal() == .alertFirstButtonReturn {
             CGRequestScreenCaptureAccess()
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)

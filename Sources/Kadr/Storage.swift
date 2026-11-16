@@ -196,9 +196,17 @@ enum History {
         list.removeAll { $0 == url.path }
         list.insert(url.path, at: 0)
         UserDefaults.standard.set(Array(list.prefix(limit)), forKey: PrefKey.history)
+        NotificationCenter.default.post(name: .kadrHistoryChanged, object: nil)
     }
 
-    static func clear() { UserDefaults.standard.removeObject(forKey: PrefKey.history) }
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: PrefKey.history)
+        NotificationCenter.default.post(name: .kadrHistoryChanged, object: nil)
+    }
+}
+
+extension Notification.Name {
+    static let kadrHistoryChanged = Notification.Name("kadr.historyChanged")
 }
 
 extension CGImage {

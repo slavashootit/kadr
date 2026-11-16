@@ -13,7 +13,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate {
         c.window?.center()
         c.showWindow(nil)
         c.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     static func openFile(_ url: URL) {

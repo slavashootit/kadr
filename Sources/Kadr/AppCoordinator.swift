@@ -152,7 +152,7 @@ final class AppCoordinator {
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         panel.directoryURL = Storage.folder()
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url { EditorWindowController.openFile(url) }
     }
 }

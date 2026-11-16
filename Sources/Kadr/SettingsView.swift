@@ -16,7 +16,7 @@ enum SettingsWindow {
             window = w
         }
         window?.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -295,48 +295,165 @@ enum HistoryWindow {
         w.contentView = NSHostingView(rootView: HistoryView())
         window = w
         w.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+private enum HistoryFilter: String, CaseIterable {
+    case all = "Усе", images = "Знімки", video = "Відео"
+
+    func matches(_ url: URL) -> Bool {
+        let isVideo = ["mp4", "mov", "gif"].contains(url.pathExtension.lowercased())
+        switch self {
+        case .all: return true
+        case .images: return !isVideo
+        case .video: return isVideo
+        }
     }
 }
 
 private struct HistoryView: View {
     @Local private var urls = History.urls
+    @Local private var filter = HistoryFilter.all
+    @Local private var selection: Set<URL> = []
+
+    private static let dayFormat: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "uk_UA")
+        f.dateFormat = "d MMMM, EEEE"
+        return f
+    }()
+
+    /// Newest day first; inside a day the order of `History.urls` (newest first) is kept.
+    private var days: [(title: String, items: [URL])] {
+        let cal = Calendar.current
+        var order: [Date] = []
+        var byDay: [Date: [URL]] = [:]
+        for u in urls where filter.matches(u) {
+            let date = (try? u.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            let day = cal.startOfDay(for: date)
+            if byDay[day] == nil { order.append(day) }
+            byDay[day, default: []].append(u)
+        }
+        return order.sorted(by: >).map { day in
+            let title = cal.isDateInToday(day) ? "Сьогодні" : cal.isDateInYesterday(day) ? "Учора" : Self.dayFormat.string(from: day)
+            return (title, byDay[day] ?? [])
+        }
+    }
 
     var body: some View {
-        Group {
-            if urls.isEmpty {
+        VStack(spacing: 0) {
+            bar
+            Divider()
+            if days.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 40)).foregroundStyle(.secondary)
-                    Text("Ще немає знімків").foregroundStyle(.secondary)
+                    Text(urls.isEmpty ? "Ще немає знімків" : "У цьому розділі порожньо").foregroundStyle(.secondary)
+                    if urls.isEmpty {
+                        Text("Зроби перший: меню Kadr у рядку меню").font(.caption).foregroundStyle(.tertiary)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
-                        ForEach(urls, id: \.self) { u in HistoryCell(url: u) { urls = History.urls } }
+                    LazyVStack(alignment: .leading, spacing: 18, pinnedViews: []) {
+                        ForEach(days, id: \.title) { day in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 6) {
+                                    Text(day.title).font(.system(size: 13, weight: .semibold))
+                                    Text("\(day.items.count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 14)], spacing: 14) {
+                                    ForEach(day.items, id: \.self) { u in
+                                        HistoryCell(url: u, selected: selection.contains(u),
+                                                    select: { toggle(u, extend: $0) },
+                                                    changed: reload)
+                                    }
+                                }
+                            }
+                        }
                     }
                     .padding(16)
                 }
             }
         }
-        .toolbar {
-            Button("Очистити історію") { History.clear(); urls = [] }
-        }
         .frame(minWidth: 520, minHeight: 360)
+        .onReceive(NotificationCenter.default.publisher(for: .kadrHistoryChanged)) { _ in reload() }
+    }
+
+    private var bar: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: $filter) {
+                ForEach(HistoryFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 220)
+            Spacer()
+            if selection.isEmpty {
+                Text("⌘-клік — вибрати кілька").font(.caption).foregroundStyle(.tertiary)
+                Button("Очистити історію") { History.clear(); reload() }
+            } else {
+                Text("Вибрано: \(selection.count)").font(.caption).foregroundStyle(.secondary)
+                Button("Копіювати") {
+                    let picked = urls.filter(selection.contains).reversed()
+                    Clipboard.copy(files: Array(picked))
+                    HUD.show("Скопійовано: \(picked.count)", detail: "⌘V вставить усі разом")
+                    selection = []
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                Button("У кошик") {
+                    for u in selection { try? FileManager.default.trashItem(at: u, resultingItemURL: nil) }
+                    selection = []
+                    reload()
+                }
+                Button("Зняти вибір") { selection = [] }.keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+    private func reload() {
+        urls = History.urls
+        selection = selection.filter { urls.contains($0) }
+    }
+
+    private func toggle(_ u: URL, extend: Bool) {
+        if extend {
+            if selection.contains(u) { selection.remove(u) } else { selection.insert(u) }
+        } else {
+            selection = selection == [u] ? [] : [u]
+        }
     }
 }
 
 private struct HistoryCell: View {
     let url: URL
+    let selected: Bool
+    let select: (_ extend: Bool) -> Void
     let changed: () -> Void
     @Local private var thumb: NSImage? = nil
+    @Local private var hover = false
 
     private var isImage: Bool { ["png", "jpg", "jpeg", "gif"].contains(url.pathExtension.lowercased()) }
+
+    private static let time: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
+    private var caption: String {
+        let date = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? nil
+        let t = date.map(Self.time.string(from:)) ?? url.lastPathComponent
+        return isImage ? t : "\(t) · \(url.pathExtension.lowercased())"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.12))
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.secondary.opacity(0.10))
                 if let thumb {
                     Image(nsImage: thumb).resizable().aspectRatio(contentMode: .fit).padding(4)
                 } else {
@@ -344,10 +461,18 @@ private struct HistoryCell: View {
                 }
             }
             .frame(height: 110)
-            Text(url.lastPathComponent).font(.caption).lineLimit(1).truncationMode(.middle)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(selected ? Color.accentColor : Color.clear, lineWidth: 2.5)
+            )
+            .scaleEffect(hover ? 1.02 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: hover)
+            Text(caption).font(.caption.monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
         }
         .contentShape(Rectangle())
+        .onHover { hover = $0 }
         .onTapGesture(count: 2) { open() }
+        .onTapGesture { select(NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift)) }
         .contextMenu {
             Button("Відкрити") { open() }
             if url.pathExtension.lowercased() == "mp4" {
@@ -355,14 +480,17 @@ private struct HistoryCell: View {
             } else if url.pathExtension.lowercased() != "gif" {
                 Button("Редагувати") { EditorWindowController.openFile(url) }
             }
-            Button("Копіювати") { Clipboard.copy(file: url) }
+            Button("Копіювати") {
+                if isImage, case let (img, scale)? = Thumbs.full(url) { Clipboard.copy(img, scale: scale, file: url) } else { Clipboard.copy(file: url) }
+            }
             Button("Показати у Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             Divider()
             Button("У кошик") { try? FileManager.default.trashItem(at: url, resultingItemURL: nil); changed() }
         }
         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
+        .help(url.lastPathComponent)
         .task {
-            if isImage { thumb = NSImage(contentsOf: url) } else { thumb = QuickAccess.thumbnail(for: CaptureItem(video: url)) }
+            if isImage { thumb = Thumbs.image(for: url, maxPixel: 480) } else { thumb = QuickAccess.thumbnail(for: CaptureItem(video: url)) }
         }
     }
 

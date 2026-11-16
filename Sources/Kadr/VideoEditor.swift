@@ -180,14 +180,14 @@ final class VideoEditorWindowController: NSWindowController, NSWindowDelegate {
     static func open(_ url: URL, gif: Bool = false) {
         if let existing = openEditors.first(where: { $0.model.url == url }) {
             existing.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
         let c = VideoEditorWindowController(url: url, gif: gif)
         openEditors.append(c)
         c.window?.center()
         c.showWindow(nil)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     let model: VideoEditorModel

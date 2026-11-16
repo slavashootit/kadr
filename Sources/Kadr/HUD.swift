@@ -63,7 +63,9 @@ private struct HUDView: View {
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 11)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.82)))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+        .environment(\.colorScheme, .dark)
     }
 }
 

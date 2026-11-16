@@ -25,7 +25,7 @@ final class PinWindow: NSPanel {
         let w = PinWindow(image: image, scale: scale, frame: frame)
         all.append(w)
         w.makeKeyAndOrderFront(nil)
-        NSApp.activate()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @MainActor static func closeAll() { all.forEach { $0.close() } }

@@ -61,7 +61,7 @@ final class RecordingSetup {
             p.contentView = host
             panel = p
             p.makeKeyAndOrderFront(nil)
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
             refreshAudio()
             Task { _ = await refreshCamera() }
         }

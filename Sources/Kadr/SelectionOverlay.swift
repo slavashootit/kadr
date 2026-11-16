@@ -47,7 +47,7 @@ final class SelectionController {
                 overlays.append(w)
                 w.orderFrontRegardless()
             }
-            NSApp.activate()
+            NSApp.activate(ignoringOtherApps: true)
             let target = overlays.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? overlays.first
             if let target {
                 target.makeKey()
