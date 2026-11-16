@@ -12,8 +12,8 @@ final class AppCoordinator {
         switch action {
         case .area: run { await self.captureArea() }
         case .window: run { await self.captureWindow() }
-        case .fullscreen: run { await self.captureFullscreen(delay: 0) }
-        case .previousArea: run { await self.capturePreviousArea() }
+        case .fullscreen: run(queue: true) { await self.captureFullscreen(delay: 0) }
+        case .previousArea: run(queue: true) { await self.capturePreviousArea() }
         case .recordVideo: Recorder.shared.toggle(gif: false)
         case .recordGIF: Recorder.shared.toggle(gif: true)
         case .ocr: run { await self.captureText() }
@@ -25,13 +25,23 @@ final class AppCoordinator {
         }
     }
 
-    /// Prevents overlapping selection overlays (e.g. double hotkey press).
-    private func run(_ work: @escaping @MainActor () async -> Void) {
+    private var queued: [@MainActor () async -> Void] = []
+
+    /// Prevents overlapping selection overlays (e.g. double hotkey press). Captures that need no
+    /// selection (`queue: true`) wait their turn instead of being dropped, so a rapid series
+    /// of full-screen shots loses nothing.
+    private func run(queue: Bool = false, _ work: @escaping @MainActor () async -> Void) {
         if Recorder.shared.isRecording { HUD.error("Спершу зупини запис"); return }
-        guard !busy else { return }
+        guard !busy else {
+            if queue, queued.count < 30 { queued.append(work) }
+            return
+        }
         busy = true
         Task { @MainActor in
             await work()
+            while !self.queued.isEmpty {
+                await self.queued.removeFirst()()
+            }
             self.busy = false
         }
     }
@@ -115,7 +125,7 @@ final class AppCoordinator {
         Sound.shutter()
         let item = CaptureItem(image: image, scale: scale, screenRect: screenRect)
         if Prefs.afterSave { item.saveToFolder() }
-        if Prefs.afterCopy { Clipboard.copy(image, scale: scale) }
+        if Prefs.afterCopy { Clipboard.copy(image, scale: scale, file: item.fileURL) }
         if Prefs.afterOpenEditor {
             EditorWindowController.open(item)
         } else if Prefs.afterOverlay {

@@ -155,7 +155,7 @@ final class QuickAccess {
     private func perform(_ action: Action, _ item: CaptureItem) {
         switch action {
         case .copy:
-            if let img = item.image { Clipboard.copy(img, scale: item.scale) } else if let u = item.fileURL { Clipboard.copy(file: u) }
+            if let img = item.image { Clipboard.copy(img, scale: item.scale, file: item.fileURL) } else if let u = item.fileURL { Clipboard.copy(file: u) }
             HUD.show("Скопійовано")
             close(item)
         case .save:

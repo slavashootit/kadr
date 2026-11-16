@@ -71,31 +71,81 @@ enum Storage {
     }
 }
 
+/// Every write goes through one ordered queue. Image data is encoded *before* the pasteboard is
+/// cleared, so clipboard managers never catch it empty, and consecutive writes are spaced out so a
+/// manager that polls `changeCount` sees each capture of a rapid series, not only the last one.
 enum Clipboard {
-    static func copy(_ image: CGImage, scale: CGFloat) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        let ns = NSImage(cgImage: image, size: NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale))
-        if let png = Storage.pngData(image) {
-            let item = NSPasteboardItem()
-            item.setData(png, forType: .png)
-            if let tiff = ns.tiffRepresentation { item.setData(tiff, forType: .tiff) }
-            pb.writeObjects([item])
-        } else {
-            pb.writeObjects([ns])
+    /// Marks a pasteboard item as coming from Kadr; the value is the saved file path (may be empty).
+    static let sourceType = NSPasteboard.PasteboardType("com.slava.kadr.source")
+    /// Posted right after each write so Bufer can read it immediately instead of waiting for its poll.
+    static let didWrite = Notification.Name("com.slava.kadr.clipboardDidWrite")
+
+    /// Longest poll interval we protect against (Bufer's default is 0.5 s).
+    private static let minGap: TimeInterval = 0.6
+    private static let encodeQueue = DispatchQueue(label: "kadr.clipboard.encode", qos: .userInitiated)
+    private static var pending: [() -> Void] = []   // main thread only
+    private static var draining = false
+    private static var lastWrite = Date.distantPast
+
+    static func copy(_ image: CGImage, scale: CGFloat, file: URL? = nil) {
+        encodeQueue.async {
+            let rep = NSBitmapImageRep(cgImage: image)
+            let png = rep.representation(using: .png, properties: [:])
+            // Point size makes Retina shots paste at their on-screen size in apps that read TIFF.
+            rep.size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+            let tiff = rep.representation(using: .tiff, properties: [.compressionMethod: NSBitmapImageRep.TIFFCompression.lzw])
+            enqueue {
+                let item = NSPasteboardItem()
+                if let png { item.setData(png, forType: .png) }
+                if let tiff { item.setData(tiff, forType: .tiff) }
+                item.setString(file?.path ?? "", forType: sourceType)
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.writeObjects([item])
+            }
         }
     }
 
     static func copy(file url: URL) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.writeObjects([url as NSURL])
+        // Through the encode queue too, so it keeps its place among image copies.
+        encodeQueue.async {
+            enqueue {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.writeObjects([url as NSURL])
+            }
+        }
     }
 
     static func copy(text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
+        encodeQueue.async {
+            enqueue {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(text, forType: .string)
+            }
+        }
+    }
+
+    private static func enqueue(_ write: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            pending.append(write)
+            drain()
+        }
+    }
+
+    private static func drain() {
+        guard !draining, !pending.isEmpty else { return }
+        draining = true
+        let wait = max(0, minGap - Date().timeIntervalSince(lastWrite))
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+            let write = pending.removeFirst()
+            write()
+            lastWrite = Date()
+            DistributedNotificationCenter.default().postNotificationName(didWrite, object: nil, userInfo: nil, deliverImmediately: true)
+            draining = false
+            drain()
+        }
     }
 
     static func image() -> (CGImage, CGFloat)? {
@@ -122,7 +172,7 @@ enum Sound {
 
 /// Recent captures, newest first.
 enum History {
-    static let limit = 30
+    static let limit = 300
 
     static var urls: [URL] {
         (UserDefaults.standard.stringArray(forKey: PrefKey.history) ?? [])
