@@ -117,6 +117,17 @@ enum Clipboard {
         }
     }
 
+    /// Several files at once: one ⌘V pastes them all (Telegram, Claude, Finder, Notes).
+    static func copy(files urls: [URL]) {
+        encodeQueue.async {
+            enqueue {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.writeObjects(urls.map { $0 as NSURL })
+            }
+        }
+    }
+
     static func copy(text: String) {
         encodeQueue.async {
             enqueue {

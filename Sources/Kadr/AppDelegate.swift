@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -70,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        func add(_ title: String, _ symbol: String, _ action: HotKeyAction) {
+        func add(_ title: String, _ symbol: String, _ action: HotKeyAction, to target: NSMenu) {
             let i = NSMenuItem(title: title, action: #selector(menuAction(_:)), keyEquivalent: "")
             i.target = self
             i.representedObject = action.rawValue
@@ -79,22 +80,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 i.keyEquivalent = c.menuKey
                 i.keyEquivalentModifierMask = c.menuModifiers
             }
-            menu.addItem(i)
+            target.addItem(i)
         }
-        func item(_ title: String, _ symbol: String?, _ sel: Selector, key: String = "") -> NSMenuItem {
+        @discardableResult
+        func item(_ title: String, _ symbol: String?, _ sel: Selector, key: String = "", to target: NSMenu) -> NSMenuItem {
             let i = NSMenuItem(title: title, action: sel, keyEquivalent: key)
             i.target = self
             if let symbol { i.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
-            menu.addItem(i)
+            target.addItem(i)
             return i
         }
 
-        add("Знімок області", "rectangle.dashed", .area)
-        add("Знімок вікна", "macwindow", .window)
-        add("Весь екран", "display", .fullscreen)
-        add("Попередня область", "arrow.counterclockwise", .previousArea)
-        add("Скролінг-знімок", "arrow.down.doc", .scrolling)
+        // The three everyday captures first.
+        add("Знімок області", "rectangle.dashed", .area, to: menu)
+        add("Знімок вікна", "macwindow", .window, to: menu)
+        add("Весь екран", "display", .fullscreen, to: menu)
+        menu.addItem(.separator())
+        add("Записати відео", "record.circle", .recordVideo, to: menu)
+        add("Записати GIF", "photo.stack", .recordGIF, to: menu)
 
+        // Latest captures: click copies, drag gives the file.
+        let urls = Array(History.urls.prefix(5))
+        if !urls.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Останні — клік копіює"))
+            let strip = NSMenuItem()
+            let host = NSHostingView(rootView: RecentStrip(urls: urls) { [weak self] url in
+                menu.cancelTracking()
+                self?.copyRecent(url)
+            })
+            host.frame = NSRect(x: 0, y: 0, width: 320, height: RecentStrip.height)
+            strip.view = host
+            menu.addItem(strip)
+        }
+        add("Історія знімків", "clock.arrow.circlepath", .history, to: menu)
+        if BuferLink.isInstalled {
+            item("Історія буфера (Bufer)", "doc.on.clipboard", #selector(openBufer), to: menu)
+        }
+        item("Відкрити теку знімків", "folder", #selector(openFolder), to: menu)
+        menu.addItem(.separator())
+
+        // Everything occasional lives one level down.
+        let more = NSMenuItem(title: "Ще", action: nil, keyEquivalent: "")
+        more.image = NSImage(systemSymbolName: "ellipsis.circle", accessibilityDescription: nil)
+        let mm = NSMenu()
+        add("Попередня область", "arrow.counterclockwise", .previousArea, to: mm)
+        add("Скролінг-знімок", "arrow.down.doc", .scrolling, to: mm)
         let timer = NSMenuItem(title: "Знімок із таймером", action: nil, keyEquivalent: "")
         timer.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
         let tm = NSMenu()
@@ -105,55 +136,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             tm.addItem(i)
         }
         timer.submenu = tm
-        menu.addItem(timer)
-
-        menu.addItem(.separator())
-        add("Записати відео", "record.circle", .recordVideo)
-        add("Записати GIF", "photo.stack", .recordGIF)
-        menu.addItem(.separator())
-        add("Розпізнати текст (OCR)", "text.viewfinder", .ocr)
-        add("Закріпити з буфера", "pin", .pinClipboard)
-        _ = item("Редагувати з буфера", "pencil.tip.crop.circle", #selector(annotateClipboard))
-        _ = item("Відкрити зображення…", "folder", #selector(openFile), key: "o")
-        menu.addItem(.separator())
-
+        mm.addItem(timer)
+        mm.addItem(.separator())
+        add("Розпізнати текст (OCR)", "text.viewfinder", .ocr, to: mm)
+        add("Закріпити з буфера", "pin", .pinClipboard, to: mm)
+        item("Редагувати з буфера", "pencil.tip.crop.circle", #selector(annotateClipboard), to: mm)
+        item("Відкрити зображення…", "photo", #selector(openFile), key: "o", to: mm)
+        mm.addItem(.separator())
         add(DesktopIcons.shared.isHidden ? "Показати іконки робочого столу" : "Сховати іконки робочого столу",
-            DesktopIcons.shared.isHidden ? "eye" : "eye.slash", .toggleDesktop)
-        if PinWindow.count > 0 {
-            _ = item("Розблокувати піни", "lock.open", #selector(unlockPins))
-            _ = item("Закрити всі піни (\(PinWindow.count))", "pin.slash", #selector(closePins))
-        }
+            DesktopIcons.shared.isHidden ? "eye" : "eye.slash", .toggleDesktop, to: mm)
+        more.submenu = mm
+        menu.addItem(more)
 
-        let recent = NSMenuItem(title: "Останні знімки", action: nil, keyEquivalent: "")
-        recent.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
-        let rm = NSMenu()
-        let urls = History.urls.prefix(12)
-        if urls.isEmpty {
-            rm.addItem(NSMenuItem(title: "Поки порожньо", action: nil, keyEquivalent: ""))
+        if PinWindow.count > 0 {
+            item("Розблокувати піни", "lock.open", #selector(unlockPins), to: menu)
+            item("Закрити всі піни (\(PinWindow.count))", "pin.slash", #selector(closePins), to: menu)
         }
-        for u in urls {
-            let i = NSMenuItem(title: u.lastPathComponent, action: #selector(openRecent(_:)), keyEquivalent: "")
-            i.target = self
-            i.representedObject = u
-            if let img = NSImage(contentsOf: u), ["png", "jpg", "jpeg", "gif"].contains(u.pathExtension.lowercased()) {
-                img.size = NSSize(width: 28, height: 28 * img.size.height / max(1, img.size.width))
-                i.image = img
-            }
-            rm.addItem(i)
-        }
-        rm.addItem(.separator())
-        let all = NSMenuItem(title: "Уся історія…", action: #selector(menuAction(_:)), keyEquivalent: "")
-        all.target = self
-        all.representedObject = HotKeyAction.history.rawValue
-        rm.addItem(all)
-        recent.submenu = rm
-        menu.addItem(recent)
-        _ = item("Відкрити теку знімків", "folder.badge.gearshape", #selector(openFolder))
 
         menu.addItem(.separator())
-        _ = item("Налаштування…", "gearshape", #selector(openSettings), key: ",")
-        _ = item("Вийти з Kadr", nil, #selector(quit), key: "q")
+        item("Налаштування…", "gearshape", #selector(openSettings), key: ",", to: menu)
+        item("Вийти з Kadr", nil, #selector(quit), key: "q", to: menu)
     }
+
+    private func copyRecent(_ url: URL) {
+        if ["png", "jpg", "jpeg"].contains(url.pathExtension.lowercased()), case let (img, scale)? = Thumbs.full(url) {
+            Clipboard.copy(img, scale: scale, file: url)
+        } else {
+            Clipboard.copy(file: url)
+        }
+        HUD.show("Скопійовано", detail: url.lastPathComponent)
+    }
+
+    @objc private func openBufer() { BuferLink.openHistory() }
 
     @objc private func menuAction(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let a = HotKeyAction(rawValue: raw) else { return }

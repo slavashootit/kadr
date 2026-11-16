@@ -14,6 +14,9 @@ final class CaptureItem: ObservableObject, Identifiable {
     @Published var fileURL: URL?
     /// Where the capture was on screen (global AppKit coords), used to pin it in place.
     var screenRect: CGRect?
+    /// Set on the newest thumbnail only: how many captures are waiting in the stack.
+    @Published var stackCount = 0
+    @Published var collapsed = false
 
     init(image: CGImage, scale: CGFloat, fileURL: URL? = nil, screenRect: CGRect? = nil) {
         kind = .image
@@ -64,16 +67,32 @@ final class CaptureItem: ObservableObject, Identifiable {
 final class QuickAccess {
     static let shared = QuickAccess()
 
-    private var panels: [(item: CaptureItem, panel: NSPanel)] = []
+    private struct Entry {
+        let item: CaptureItem
+        let panel: NSPanel
+        let size: CGSize
+    }
+
+    private var entries: [Entry] = []          // oldest first
     private var timers: [UUID: Timer] = [:]
+    private var hovered: Set<UUID> = []
+    private var expanded = false
+    private var collapseWork: DispatchWorkItem?
     private let width: CGFloat = 250
     private let margin: CGFloat = 16
+    /// More thumbnails than this fold into a deck instead of growing up the screen.
+    private let deckThreshold = 3
+
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    /// Slight overshoot, reads as a spring settling.
+    private let spring = CAMediaTimingFunction(controlPoints: 0.3, 1.32, 0.5, 1)
+    private let glide = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
 
     func show(_ item: CaptureItem) {
         let thumb = Self.thumbnail(for: item)
-        let aspect = thumb.size.height > 0 ? thumb.size.height / thumb.size.width : 0.62
-        let height = min(max(width * aspect, 110), 300)
-        let panel = NSPanel(contentRect: CGRect(x: 0, y: 0, width: width, height: height),
+        let aspect = thumb.size.width > 0 ? thumb.size.height / thumb.size.width : 0.62
+        let size = CGSize(width: width, height: min(max(width * aspect, 110), 300))
+        let panel = NSPanel(contentRect: CGRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.identifier = Exclusion.identifier
         panel.isReleasedWhenClosed = false
@@ -85,39 +104,84 @@ final class QuickAccess {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.becomesKeyOnlyIfNeeded = true
 
-        let view = QuickAccessView(item: item, thumb: thumb, size: CGSize(width: width, height: height),
+        let view = QuickAccessView(item: item, thumb: thumb,
                                    onHover: { [weak self] hovering in self?.hoverChanged(item, hovering) },
                                    act: { [weak self] action in self?.perform(action, item) })
-        panel.contentView = NSHostingView(rootView: view)
-        panels.append((item, panel))
-        layout(animated: false, newPanel: panel)
-        panel.orderFrontRegardless()
+        let host = NSHostingView(rootView: view)
+        host.sizingOptions = []
+        panel.contentView = host
+        entries.append(Entry(item: item, panel: panel, size: size))
+        layout(animated: true, newPanel: panel, flyFrom: item.screenRect)
         scheduleClose(item)
     }
 
-    private func layout(animated: Bool, newPanel: NSPanel? = nil) {
+    /// Newest sits at the bottom-left. Up to `deckThreshold` thumbnails form a column; more than that
+    /// fold into a deck behind the newest one until the pointer opens it.
+    private func layout(animated: Bool, newPanel: NSPanel? = nil, flyFrom: CGRect? = nil) {
         let screen = NSScreen.withMouse.visibleFrame
-        var y = screen.minY + margin
-        for (_, p) in panels.reversed() {
-            let target = CGRect(x: screen.minX + margin, y: y, width: p.frame.width, height: p.frame.height)
-            if p === newPanel {
-                p.setFrame(target.offsetBy(dx: -width - margin, dy: 0), display: false)
-                p.alphaValue = 0
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.22
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                    p.animator().setFrame(target, display: true)
-                    p.animator().alphaValue = 1
-                }
+        let deck = entries.count > deckThreshold && !expanded
+        let origin = CGPoint(x: screen.minX + margin, y: screen.minY + margin)
+        let newest = entries.last
+        var y = origin.y
+
+        for (depth, e) in entries.reversed().enumerated() {
+            var target: CGRect
+            var alpha: CGFloat = 1
+            if deck, depth > 0, let front = newest {
+                let d = CGFloat(min(depth, 3))
+                target = CGRect(x: origin.x + 7 * d, y: origin.y + 8 * d,
+                                width: front.size.width - 14 * d, height: front.size.height)
+                if depth > 3 { alpha = 0 }
+            } else {
+                target = CGRect(origin: CGPoint(x: origin.x, y: y), size: e.size)
+                if target.maxY > screen.maxY - margin { alpha = 0 }
+                y += e.size.height + 10
+            }
+            e.item.stackCount = depth == 0 ? entries.count : 0
+            e.item.collapsed = deck
+            e.panel.ignoresMouseEvents = alpha == 0
+
+            if e.panel === newPanel {
+                appear(e.panel, at: target, from: flyFrom)
             } else if animated {
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.18
-                    p.animator().setFrame(target, display: true)
+                    ctx.duration = reduceMotion ? 0.12 : 0.34
+                    ctx.timingFunction = reduceMotion ? CAMediaTimingFunction(name: .easeOut) : spring
+                    e.panel.animator().setFrame(target, display: true)
+                    e.panel.animator().alphaValue = alpha
                 }
             } else {
-                p.setFrame(target, display: true)
+                e.panel.setFrame(target, display: true)
+                e.panel.alphaValue = alpha
             }
-            y += p.frame.height + 10
+        }
+        // Keep the newest on top of the deck.
+        for e in entries where e.panel !== newPanel { e.panel.orderFront(nil) }
+        newest?.panel.orderFrontRegardless()
+    }
+
+    /// A new capture shrinks from the place it was taken into its slot; without a source rect
+    /// (recordings) or with Reduce Motion it slides in from the edge.
+    private func appear(_ p: NSPanel, at target: CGRect, from: CGRect?) {
+        if let from, !reduceMotion, from.width > target.width {
+            p.setFrame(from, display: true)
+            p.alphaValue = 1
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.42
+                ctx.timingFunction = glide
+                p.animator().setFrame(target, display: true)
+            }
+        } else {
+            p.setFrame(target.offsetBy(dx: -width - margin, dy: 0), display: false)
+            p.alphaValue = 0
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                p.animator().setFrame(target, display: true)
+                p.animator().alphaValue = 1
+            }
         }
     }
 
@@ -130,14 +194,38 @@ final class QuickAccess {
         }
     }
 
+    /// While the pointer is over any thumbnail nothing closes, and a folded deck opens.
     private func hoverChanged(_ item: CaptureItem, _ hovering: Bool) {
-        if hovering { timers[item.id]?.invalidate() } else { scheduleClose(item) }
+        if hovering {
+            hovered.insert(item.id)
+            collapseWork?.cancel()
+            timers.values.forEach { $0.invalidate() }
+            if entries.count > deckThreshold, !expanded {
+                expanded = true
+                layout(animated: true)
+            }
+        } else {
+            hovered.remove(item.id)
+            guard hovered.isEmpty else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.hovered.isEmpty else { return }
+                if self.expanded {
+                    self.expanded = false
+                    self.layout(animated: true)
+                }
+                self.entries.forEach { self.scheduleClose($0.item) }
+            }
+            collapseWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+        }
     }
 
     func close(_ item: CaptureItem) {
         timers.removeValue(forKey: item.id)?.invalidate()
-        guard let idx = panels.firstIndex(where: { $0.item.id == item.id }) else { return }
-        let p = panels.remove(at: idx).panel
+        hovered.remove(item.id)
+        guard let idx = entries.firstIndex(where: { $0.item.id == item.id }) else { return }
+        let p = entries.remove(at: idx).panel
+        if entries.count <= deckThreshold { expanded = false }
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.18
             p.animator().alphaValue = 0
@@ -148,9 +236,9 @@ final class QuickAccess {
         layout(animated: true)
     }
 
-    func closeAll() { panels.map(\.item).forEach(close) }
+    func closeAll() { entries.map(\.item).forEach(close) }
 
-    enum Action { case copy, save, annotate, editVideo, pin, reveal, open, delete, gif, close, upload }
+    enum Action { case copy, copyAll, save, annotate, editVideo, pin, reveal, open, delete, gif, close, upload }
 
     private func perform(_ action: Action, _ item: CaptureItem) {
         switch action {
@@ -158,6 +246,13 @@ final class QuickAccess {
             if let img = item.image { Clipboard.copy(img, scale: item.scale, file: item.fileURL) } else if let u = item.fileURL { Clipboard.copy(file: u) }
             HUD.show("Скопійовано")
             close(item)
+        case .copyAll:
+            // Oldest first, so they paste in the order they were taken.
+            let urls = entries.compactMap { $0.item.kind == .image ? $0.item.ensureFile() : $0.item.fileURL }
+            guard !urls.isEmpty else { return }
+            Clipboard.copy(files: urls)
+            HUD.show("Скопійовано знімків: \(urls.count)", detail: "⌘V вставить усі разом")
+            closeAll()
         case .save:
             if item.kind == .image, let url = item.saveToFolder() {
                 HUD.show("Збережено", detail: url.lastPathComponent)
@@ -207,7 +302,9 @@ final class QuickAccess {
 
     static func thumbnail(for item: CaptureItem) -> NSImage {
         if let img = item.image {
-            return NSImage(cgImage: img, size: item.pointSize)
+            let longest = CGFloat(max(img.width, img.height))
+            let small = longest > 1400 ? img.scaled(by: 1400 / longest) ?? img : img
+            return NSImage(cgImage: small, size: item.pointSize)
         }
         if let url = item.fileURL {
             if url.pathExtension.lowercased() == "gif", let g = NSImage(contentsOf: url) { return g }
@@ -244,52 +341,43 @@ enum Share {
 private struct QuickAccessView: View {
     @ObservedObject var item: CaptureItem
     let thumb: NSImage
-    let size: CGSize
     let onHover: (Bool) -> Void
     let act: (QuickAccess.Action) -> Void
     @Local private var hover = false
 
     var body: some View {
-        ZStack {
-            Image(nsImage: thumb)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: size.width, height: size.height)
-                .clipped()
-            if item.kind == .video && !hover {
-                Image(systemName: "play.circle.fill").font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 4)
-            }
-            if hover {
-                Color.black.opacity(0.5)
-                VStack(spacing: 0) {
-                    HStack {
-                        corner("xmark", "Закрити") { act(.close) }
-                        Spacer()
-                        if item.kind == .image { corner("pin.fill", "Закріпити поверх вікон") { act(.pin) } }
-                        corner("square.and.arrow.up", "Поділитися") { act(.upload) }
-                    }
-                    Spacer()
-                    VStack(spacing: 8) {
-                        pill("Копіювати") { act(.copy) }
-                        pill(item.kind == .image ? "Зберегти" : "Показати у Finder") { act(.save) }
-                    }
-                    Spacer()
-                    HStack {
-                        if item.kind == .image {
-                            corner("pencil.tip.crop.circle", "Редагувати") { act(.annotate) }
-                        } else if item.fileURL?.pathExtension.lowercased() != "gif" {
-                            corner("scissors", "Обрізати й експортувати") { act(.editVideo) }
-                            corner("photo.stack", "Конвертувати в GIF") { act(.gif) }
+        GeometryReader { geo in
+            ZStack {
+                Image(nsImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                if item.kind == .video && !hover {
+                    Image(systemName: "play.circle.fill").font(.system(size: 34)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 4)
+                }
+                if item.collapsed, item.stackCount > 1, !hover {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Text("×\(item.stackCount)")
+                                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Capsule().fill(.regularMaterial))
                         }
                         Spacer()
-                        corner("eye", "Відкрити") { act(.open) }
-                        corner("trash", "У кошик") { act(.delete) }
                     }
+                    .padding(8)
+                    .transition(.opacity)
                 }
-                .padding(8)
+                // Controls only once the thumbnail has landed at its resting width.
+                if hover, geo.size.width < 300 {
+                    Rectangle().fill(.ultraThinMaterial)
+                    controls.padding(8)
+                }
             }
         }
-        .frame(width: size.width, height: size.height)
+        .environment(\.colorScheme, .dark)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.18), lineWidth: 1))
         .onHover { h in
@@ -307,20 +395,54 @@ private struct QuickAccessView: View {
         }
     }
 
+    private var controls: some View {
+        VStack(spacing: 0) {
+            HStack {
+                corner("xmark", "Закрити") { act(.close) }
+                Spacer()
+                if item.kind == .image { corner("pin.fill", "Закріпити поверх вікон") { act(.pin) } }
+                corner("square.and.arrow.up", "Поділитися") { act(.upload) }
+            }
+            Spacer()
+            VStack(spacing: 6) {
+                pill("Копіювати") { act(.copy) }
+                if item.stackCount > 1 {
+                    pill("Скопіювати всі \(item.stackCount)") { act(.copyAll) }
+                } else {
+                    pill(item.kind == .image ? "Зберегти" : "Показати у Finder") { act(.save) }
+                }
+            }
+            Spacer()
+            HStack {
+                if item.kind == .image {
+                    corner("pencil.tip.crop.circle", "Редагувати") { act(.annotate) }
+                } else if item.fileURL?.pathExtension.lowercased() != "gif" {
+                    corner("scissors", "Обрізати й експортувати") { act(.editVideo) }
+                    corner("photo.stack", "Конвертувати в GIF") { act(.gif) }
+                }
+                Spacer()
+                corner("eye", "Відкрити") { act(.open) }
+                corner("trash", "У кошик") { act(.delete) }
+            }
+        }
+    }
+
     private func pill(_ title: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.black)
-                .frame(width: 130, height: 28)
-                .background(Capsule().fill(Color.white))
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 150, height: 28)
+                .background(Capsule().fill(Color.white.opacity(0.22)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.28), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
 
     private func corner(_ symbol: String, _ help: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
+            Image(systemName: symbol).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 26, height: 26)
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(Color.white.opacity(0.22)))
+                .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
         .help(help)
