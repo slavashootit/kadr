@@ -55,6 +55,7 @@ final class CaptureItem: ObservableObject, Identifiable {
             try Storage.write(image, scale: scale, to: url)
             fileURL = url
             History.add(url)
+            TextIndex.index([url])
             return url
         } catch {
             HUD.error("Не вдалося зберегти: \(error.localizedDescription)")

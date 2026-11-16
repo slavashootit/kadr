@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         Recorder.shared.onStateChange = { [weak self] in self?.updateStatusItem() }
+        Archiver.start()
 
         if !Capture.hasPermission() {
             CGRequestScreenCaptureAccess()

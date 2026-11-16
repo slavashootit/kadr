@@ -30,6 +30,7 @@ enum PrefKey {
     static let gifMaxWidth = "gifMaxWidth"
     static let lastArea = "lastArea"
     static let history = "history"
+    static let archiveAfterDays = "archiveAfterDays"  // 0 = never
 }
 
 enum Prefs {
@@ -83,6 +84,7 @@ enum Prefs {
     static var playSound: Bool { d.bool(forKey: PrefKey.playSound) }
     static var windowShadow: Bool { d.bool(forKey: PrefKey.windowShadow) }
     static var overlayAutoClose: Int { d.integer(forKey: PrefKey.overlayAutoClose) }
+    static var archiveAfterDays: Int { d.integer(forKey: PrefKey.archiveAfterDays) }
     static var showMagnifier: Bool { d.bool(forKey: PrefKey.showMagnifier) }
     static var recordFPS: Int { max(10, d.integer(forKey: PrefKey.recordFPS)) }
     static var recordCursor: Bool { d.bool(forKey: PrefKey.recordCursor) }

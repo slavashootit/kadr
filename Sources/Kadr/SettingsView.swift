@@ -37,6 +37,7 @@ private struct GeneralTab: View {
     @AppStorage(PrefKey.saveFolder) private var folder = Prefs.defaultFolder.path
     @AppStorage(PrefKey.playSound) private var sound = true
     @AppStorage(PrefKey.overlayAutoClose) private var autoClose = 20
+    @AppStorage(PrefKey.archiveAfterDays) private var archiveDays = 0
     @Local private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
@@ -50,6 +51,13 @@ private struct GeneralTab: View {
                     Button("Змінити…") { pickFolder() }
                     Button { NSWorkspace.shared.open(Storage.folder()) } label: { Image(systemName: "folder") }
                 }
+                Picker("Старі знімки переносити в «Архів»", selection: $archiveDays) {
+                    Text("Ніколи").tag(0)
+                    Text("Через 7 днів").tag(7)
+                    Text("Через 30 днів").tag(30)
+                    Text("Через 90 днів").tag(90)
+                }
+                .onChange(of: archiveDays) { Archiver.run() }
             }
             Section("Поведінка") {
                 Toggle("Запускати при вході в систему", isOn: $launchAtLogin)
@@ -316,6 +324,7 @@ private struct HistoryView: View {
     @Local private var urls = History.urls
     @Local private var filter = HistoryFilter.all
     @Local private var selection: Set<URL> = []
+    @Local private var query = ""
 
     private static let dayFormat: DateFormatter = {
         let f = DateFormatter()
@@ -329,7 +338,8 @@ private struct HistoryView: View {
         let cal = Calendar.current
         var order: [Date] = []
         var byDay: [Date: [URL]] = [:]
-        for u in urls where filter.matches(u) {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        for u in urls where filter.matches(u) && (q.isEmpty || TextIndex.matches(u, q)) {
             let date = (try? u.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
             let day = cal.startOfDay(for: date)
             if byDay[day] == nil { order.append(day) }
@@ -348,7 +358,7 @@ private struct HistoryView: View {
             if days.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 40)).foregroundStyle(.secondary)
-                    Text(urls.isEmpty ? "Ще немає знімків" : "У цьому розділі порожньо").foregroundStyle(.secondary)
+                    Text(urls.isEmpty ? "Ще немає знімків" : query.isEmpty ? "У цьому розділі порожньо" : "Нічого не знайдено").foregroundStyle(.secondary)
                     if urls.isEmpty {
                         Text("Зроби перший: меню Kadr у рядку меню").font(.caption).foregroundStyle(.tertiary)
                     }
@@ -379,6 +389,7 @@ private struct HistoryView: View {
         }
         .frame(minWidth: 520, minHeight: 360)
         .onReceive(NotificationCenter.default.publisher(for: .kadrHistoryChanged)) { _ in reload() }
+        .onAppear { TextIndex.index(urls) }
     }
 
     private var bar: some View {
@@ -389,9 +400,19 @@ private struct HistoryView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 220)
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Пошук за текстом на знімку", text: $query).textFieldStyle(.plain)
+                if !query.isEmpty {
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06)))
+            .frame(maxWidth: 260)
             Spacer()
             if selection.isEmpty {
-                Text("⌘-клік — вибрати кілька").font(.caption).foregroundStyle(.tertiary)
                 Button("Очистити історію") { History.clear(); reload() }
             } else {
                 Text("Вибрано: \(selection.count)").font(.caption).foregroundStyle(.secondary)
