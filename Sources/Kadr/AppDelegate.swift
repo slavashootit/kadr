@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ServiceManagement
 import SwiftUI
 
@@ -6,6 +7,8 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
+    let updater = Updater(.init(repo: "slavashootit/kadr", bundleID: "com.slava.kadr", assetSuffix: ".zip"))
+    private var announcedUpdate: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Prefs.registerDefaults()
@@ -25,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         Recorder.shared.onStateChange = { [weak self] in self?.updateStatusItem() }
         Archiver.start()
+
+        updater.start()
+        updaterObserver = updater.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.announceUpdate() }
+        }
 
         if !Capture.hasPermission() {
             CGRequestScreenCaptureAccess()
@@ -66,6 +74,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private var updaterObserver: AnyCancellable?
+
+    /// One HUD per new version, so a menu-bar-only app still tells about it.
+    private func announceUpdate() {
+        guard let v = updater.available?.version, v != announcedUpdate else { return }
+        announcedUpdate = v
+        HUD.show("Є оновлення Kadr \(v)", symbol: "arrow.down.circle", detail: "Меню Kadr → «Оновити»", seconds: 5)
+    }
+
+    @objc private func installUpdate() {
+        if Recorder.shared.isRecording {
+            HUD.error("Спершу зупини запис — оновлення перезапустить Kadr")
+            return
+        }
+        updater.install()
+    }
+
+    @objc private func checkUpdates() {
+        Task {
+            await updater.check()
+            if updater.available == nil, updater.phase == .upToDate {
+                HUD.show("У тебе остання версія Kadr \(Updater.current)", symbol: "checkmark.circle")
+            } else if case .failed(let text) = updater.phase {
+                HUD.error(text)
+            }
+        }
+    }
+
     @objc private func stopRecording() { Task { await Recorder.shared.stop() } }
 
     // MARK: Status menu (rebuilt on open so hotkeys/history stay current)
@@ -90,6 +126,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let symbol { i.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
             target.addItem(i)
             return i
+        }
+
+        if let release = updater.available {
+            let title: String
+            switch updater.phase {
+            case .installing(let text): title = text
+            case .failed(let text): title = "Оновити до \(release.version) — минулого разу: \(text)"
+            default: title = "Є оновлення — оновити до \(release.version)"
+            }
+            item(title, "arrow.down.circle.fill", #selector(installUpdate), to: menu)
+            menu.addItem(.separator())
         }
 
         // The three everyday captures first.
@@ -156,6 +203,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         item("Налаштування…", "gearshape", #selector(openSettings), key: ",", to: menu)
+        if updater.available == nil {
+            item(updater.phase == .checking ? "Перевіряю оновлення…" : "Перевірити оновлення · \(Updater.current)",
+                 nil, #selector(checkUpdates), to: menu)
+        }
         item("Вийти з Kadr", nil, #selector(quit), key: "q", to: menu)
     }
 
