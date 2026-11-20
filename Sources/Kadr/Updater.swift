@@ -189,7 +189,7 @@ final class Updater: ObservableObject {
     }
 
     private nonisolated static func hasIdentity(_ name: String) -> Bool {
-        let out = (try? run("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"])) ?? ""
+        let out = (try? run("/usr/bin/security", ["find-identity", "-p", "codesigning"])) ?? ""
         return out.contains("\"\(name)\"")
     }
 
