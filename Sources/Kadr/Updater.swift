@@ -12,7 +12,10 @@ final class Updater: ObservableObject {
     struct Config {
         let repo: String          // "slavashootit/shepit"
         let bundleID: String      // must match the downloaded app
-        let assetSuffix: String   // ".zip"
+        let assetSuffix: String   // ".zip" or ".dmg"
+        /// Certificate to sign with when the running copy is ad-hoc (e.g. "Kadr Dev"), so macOS
+        /// permissions survive every later update. Used only if this Mac has it.
+        var preferredIdentity: String? = nil
     }
 
     struct Release: Equatable {
@@ -37,6 +40,8 @@ final class Updater: ObservableObject {
 
     /// Called right before the app quits for the swap (stop workers, save state).
     var beforeRelaunch: (() -> Void)?
+    /// Called when a newer release is found (each check), e.g. to post a notification.
+    var onFound: ((Release) -> Void)?
 
     private let config: Config
     private var timer: Timer?
@@ -84,8 +89,10 @@ final class Updater: ObservableObject {
                 phase = .upToDate
                 return
             }
-            available = Release(version: version, page: page, asset: assetURL, notes: json["body"] as? String ?? "")
+            let release = Release(version: version, page: page, asset: assetURL, notes: json["body"] as? String ?? "")
+            available = release
             phase = .available
+            onFound?(release)
         } catch {
             phase = .failed("Немає зв'язку з GitHub")
         }
@@ -116,12 +123,23 @@ final class Updater: ObservableObject {
 
         let (downloaded, response) = try await URLSession.shared.download(from: release.asset)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw fail("Не вдалося завантажити оновлення") }
-        let zip = work.appendingPathComponent("update.zip")
-        try FileManager.default.moveItem(at: downloaded, to: zip)
-
         progress("Розпаковую…")
         let unpacked = work.appendingPathComponent("x")
-        try run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path])
+        if release.asset.pathExtension.lowercased() == "dmg" {
+            let dmg = work.appendingPathComponent("update.dmg")
+            try FileManager.default.moveItem(at: downloaded, to: dmg)
+            let mount = work.appendingPathComponent("mnt")
+            try run("/usr/bin/hdiutil", ["attach", "-quiet", "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount.path, dmg.path])
+            defer { _ = try? run("/usr/bin/hdiutil", ["detach", "-quiet", "-force", mount.path]) }
+            guard let inside = try FileManager.default.contentsOfDirectory(at: mount, includingPropertiesForKeys: nil)
+                .first(where: { $0.pathExtension == "app" }) else { throw fail("В образі немає застосунку") }
+            try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
+            try run("/usr/bin/ditto", [inside.path, unpacked.appendingPathComponent(inside.lastPathComponent).path])
+        } else {
+            let zip = work.appendingPathComponent("update.zip")
+            try FileManager.default.moveItem(at: downloaded, to: zip)
+            try run("/usr/bin/ditto", ["-x", "-k", zip.path, unpacked.path])
+        }
         guard let app = try FileManager.default.contentsOfDirectory(at: unpacked, includingPropertiesForKeys: nil)
             .first(where: { $0.pathExtension == "app" }) else { throw fail("В архіві немає застосунку") }
 
@@ -134,7 +152,7 @@ final class Updater: ObservableObject {
 
         // Same signer as the running copy keeps macOS permissions. A release built on GitHub may be
         // signed ad-hoc; when this Mac has the certificate of the running copy, re-sign with it.
-        let mine = signer(of: Bundle.main.bundleURL)
+        let mine = signer(of: Bundle.main.bundleURL) ?? config.preferredIdentity
         if let mine, signer(of: app) != mine, hasIdentity(mine) {
             progress("Підписую…")
             try run("/usr/bin/codesign", ["--force", "--deep", "--identifier", config.bundleID, "--sign", mine, app.path])
